@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&family=Noto+Nastaliq+Urdu:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-display: "Cinzel", serif;
+  --font-urdu: "Noto Nastaliq Urdu", "Playfair Display", serif;
+}
+
+/* Theme definition mappings to override standard Tailwind 4 variables dynamically */
+:root {
+  /* Default: Midnight Slate / Obsidian */
+  --color-stone-950: #0c0a09;
+  --color-stone-900: #1c1917;
+  --color-stone-850: #26211e;
+  --color-stone-800: #292524;
+  --color-stone-700: #44403c;
+  --color-stone-600: #57534e;
+  --color-stone-500: #78716c;
+  --color-stone-400: #a8a29e;
+  --color-stone-300: #d6d3d1;
+  --color-stone-200: #e7e5e4;
+  --color-stone-100: #f5f5f4;
+  
+  --color-amber-500: #d97706;
+  --color-amber-400: #f59e0b;
+  --color-amber-300: #fbbf24;
+  --color-amber-200: #fcd34d;
+  --color-amber-100: #fde68a;
+  
+  --theme-scrollbar-thumb: rgba(245, 158, 11, 0.2);
+  --theme-scrollbar-hover: rgba(245, 158, 11, 0.4);
+}
+
+.theme-royal-velvet {
+  /* Royal Velvet & Rose Gold (Dark rich plum) */
+  --color-stone-950: #0f0714;
+  --color-stone-900: #1a0b22;
+  --color-stone-850: #261132;
+  --color-stone-800: #2e153b;
+  --color-stone-700: #4a245d;
+  --color-stone-600: #67357f;
+  --color-stone-500: #8c4ca8;
+  --color-stone-400: #bf8fdb;
+  --color-stone-300: #dfc8ef;
+  --color-stone-200: #f3ecf8;
+  --color-stone-100: #faf7fc;
+  
+  --color-amber-500: #f43f5e; /* Rose gold / ruby tones */
+  --color-amber-400: #fb7185;
+  --color-amber-300: #fca5a5;
+  --color-amber-200: #fecdd3;
+  --color-amber-100: #ffe4e6;
+  
+  --theme-scrollbar-thumb: rgba(251, 113, 133, 0.2);
+  --theme-scrollbar-hover: rgba(251, 113, 133, 0.4);
+}
+
+.theme-parchment {
+  /* Ghalib's Parchment & Terracotta (Classic Warm Light Theme) */
+  --color-stone-950: #faf7ed; /* Beautiful hand-laid aged paper background */
+  --color-stone-900: #f1ebd7; /* Slightly darker parchment surfaces */
+  --color-stone-850: #e6dec5;
+  --color-stone-800: #dad1b3; /* Rich sand borders */
+  --color-stone-700: #c6bca1;
+  --color-stone-600: #a89d81;
+  --color-stone-500: #807354;
+  --color-stone-400: #594e33; /* Readable dark brown text */
+  --color-stone-300: #3b321a; /* Even darker espresso */
+  --color-stone-200: #241d0b; /* Primary dark brown */
+  --color-stone-100: #120e03; /* Pure ink espresso */
+  
+  --color-amber-500: #9a3412; /* Rich burnt terracotta-red */
+  --color-amber-400: #c2410c;
+  --color-amber-300: #ea580c;
+  --color-amber-200: #f97316;
+  --color-amber-100: #ffedd5;
+  
+  --theme-scrollbar-thumb: rgba(154, 52, 18, 0.2);
+  --theme-scrollbar-hover: rgba(154, 52, 18, 0.4);
+}
+
+.theme-emerald-court {
+  /* Emerald Court & Silver (Deep Forest Teal-Jade) */
+  --color-stone-950: #04120e;
+  --color-stone-900: #0a201a;
+  --color-stone-850: #122d25;
+  --color-stone-800: #193a30;
+  --color-stone-700: #255345;
+  --color-stone-600: #357361;
+  --color-stone-500: #4c9a83;
+  --color-stone-400: #7ecab3;
+  --color-stone-300: #b4ecd9;
+  --color-stone-200: #e6faf4;
+  --color-stone-100: #f2fdfa;
+  
+  --color-amber-500: #10b981; /* Malachite green accents */
+  --color-amber-400: #34d399;
+  --color-amber-300: #6ee7b7;
+  --color-amber-200: #a7f3d0;
+  --color-amber-100: #d1fae5;
+  
+  --theme-scrollbar-thumb: rgba(52, 211, 153, 0.2);
+  --theme-scrollbar-hover: rgba(52, 211, 153, 0.4);
+}
+
+/* Scrollbar customizations */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(24, 24, 27, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb, rgba(245, 158, 11, 0.2));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-scrollbar-hover, rgba(245, 158, 11, 0.4));
+}
+
+/* Urdu calligraphy rendering helpers */
+.font-urdu {
+  font-family: 'Noto Nastaliq Urdu', 'Playfair Display', serif;
+}
+
+.font-nastaliq {
+  font-family: "Noto Nastaliq Urdu", "Playfair Display", serif;
+}
+
+.font-naskh {
+  font-family: "Noto Naskh Arabic", "Noto Nastaliq Urdu", serif;
+}
+
+.font-diwani {
+  font-family: "Aref Ruqaa", "Noto Nastaliq Urdu", serif;
+}
+
+.dir-rtl {
+  direction: rtl;
+}
+
+/* Custom court visual styles */
+body {
+  background-color: var(--color-stone-950);
+  color: var(--color-stone-200);
+  font-family: "Inter", sans-serif;
+}
+
+/* Butter-smooth transition across theme toggles */
+body, div, header, main, section, button, p, h1, h2, h3, h4, h5, h6, span, a, input, textarea {
+  transition-property: background-color, border-color, color, text-decoration-color, fill, stroke, --tw-ring-color, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+

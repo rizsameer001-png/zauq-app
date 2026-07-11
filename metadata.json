@@ -1,0 +1,6 @@
+{
+  "name": "Zauq App",
+  "description": "An ultra-premium, full-stack Urdu poetry, literature, and aesthetic appreciation app inspired by Zauq.site. Features curated Ghazals, an AI-powered Beit-Bazi (poetry duel) game, an aesthetic Sher card generator, an Urdu word dictionary, ambient audio room, and personal Deewan notebook.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

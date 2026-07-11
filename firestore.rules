@@ -1,0 +1,285 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net: Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidSher(data, uid) {
+      return data.id is string && data.id.size() <= 128
+          && data.urdu is string && data.urdu.size() <= 2000
+          && data.roman is string && data.roman.size() <= 2000
+          && data.english is string && data.english.size() <= 2000
+          && data.poet is string && data.poet.size() <= 200
+          && data.userId == uid
+          && data.createdAt == request.time
+          && (!('explanation' in data) || (data.explanation is string && data.explanation.size() <= 5000))
+          && (!('isUserAdded' in data) || data.isUserAdded is bool);
+    }
+
+    function isValidBookProgress(data, uid) {
+      return data.bookId is string && data.bookId.size() <= 128
+          && data.userId == uid
+          && data.readProgress is number && data.readProgress >= 0 && data.readProgress <= 100
+          && data.listenProgress is number && data.listenProgress >= 0 && data.listenProgress <= 100
+          && data.lastUpdated == request.time;
+    }
+
+    function isValidVideo(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+          && data.artist is string && data.artist.size() >= 1 && data.artist.size() <= 200
+          && data.url is string && data.url.size() >= 10 && data.url.size() <= 2048
+          && data.category is string && data.category.size() >= 1 && data.category.size() <= 100
+          && (!('description' in data) || (data.description is string && data.description.size() <= 2000));
+    }
+
+    function isValidAuthor(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+          && (!('bio' in data) || (data.bio is string && data.bio.size() <= 5000))
+          && (!('birthPlace' in data) || (data.birthPlace is string && data.birthPlace.size() <= 200))
+          && (!('activeYears' in data) || (data.activeYears is string && data.activeYears.size() <= 100))
+          && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 2048))
+          && (!('isLocalImage' in data) || data.isLocalImage is bool);
+    }
+
+    function isValidBook(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.authorId is string && data.authorId.size() <= 128
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+          && (!('description' in data) || (data.description is string && data.description.size() <= 5000))
+          && (!('coverImageUrl' in data) || (data.coverImageUrl is string && data.coverImageUrl.size() <= 2048))
+          && (!('isLocalCover' in data) || data.isLocalCover is bool)
+          && (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 2048))
+          && (!('isLocalAudio' in data) || data.isLocalAudio is bool)
+          && (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 2048))
+          && (!('videoType' in data) || (data.videoType is string && data.videoType.size() <= 50))
+          && (!('averageRating' in data) || (data.averageRating is number && data.averageRating >= 0 && data.averageRating <= 5))
+          && (!('reviewsCount' in data) || (data.reviewsCount is number && data.reviewsCount >= 0))
+          && (!('genre' in data) || (data.genre is string && data.genre.size() <= 200))
+          && (!('literaryPeriod' in data) || (data.literaryPeriod is string && data.literaryPeriod.size() <= 200))
+          && (!('publisher' in data) || (data.publisher is string && data.publisher.size() <= 200))
+          && (!('files' in data) || (data.files is list && data.files.size() <= 20 && (data.files.size() == 0 || (data.files[0] is map && data.files[0].id is string && data.files[0].name is string))));
+    }
+
+    function isValidDailyCouplet(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.urdu is string && data.urdu.size() >= 1 && data.urdu.size() <= 2000
+          && (!('roman' in data) || (data.roman is string && data.roman.size() <= 2000))
+          && (!('english' in data) || (data.english is string && data.english.size() <= 2000))
+          && data.poet is string && data.poet.size() >= 1 && data.poet.size() <= 200
+          && (!('explanation' in data) || (data.explanation is string && data.explanation.size() <= 5000))
+          && data.category is string && (data.category == 'Sher' || data.category == 'Mersiya')
+          && (!('activeDate' in data) || (data.activeDate is string && data.activeDate.size() <= 100));
+    }
+
+    function isValidBookReview(data, uid) {
+      return data.id is string && data.id.size() <= 128
+          && data.bookId is string && data.bookId.size() <= 128
+          && data.userId == uid
+          && data.userName is string && data.userName.size() <= 200
+          && data.text is string && data.text.size() >= 1 && data.text.size() <= 5000
+          && (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5));
+    }
+
+    // Match rules for public poets and ghazals collections
+    match /poets/{poetId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /ghazals/{ghazalId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Allow connection test
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Match rules for videos collection
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && isValidId(videoId)
+        && isValidVideo(incoming())
+        && incoming().createdAt == request.time
+        && incoming().keys().hasAll(['id', 'title', 'artist', 'url', 'category', 'createdAt'])
+        && incoming().keys().size() >= 6
+        && incoming().keys().size() <= 10;
+      allow update: if isSignedIn()
+        && isValidId(videoId)
+        && isValidVideo(incoming())
+        && incoming().id == resource.data.id
+        && (incoming().createdAt == resource.data.createdAt || !('createdAt' in resource.data));
+      allow delete: if isSignedIn()
+        && isValidId(videoId);
+    }
+
+    // Match rules for authors collection
+    match /authors/{authorId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && isValidId(authorId)
+        && isValidAuthor(incoming())
+        && incoming().createdAt == request.time
+        && incoming().keys().hasAll(['id', 'name', 'createdAt'])
+        && incoming().keys().size() >= 3
+        && incoming().keys().size() <= 12;
+      allow update: if isSignedIn()
+        && isValidId(authorId)
+        && isValidAuthor(incoming())
+        && incoming().id == resource.data.id
+        && (incoming().createdAt == resource.data.createdAt || !('createdAt' in resource.data));
+      allow delete: if isSignedIn()
+        && isValidId(authorId);
+    }
+
+    // Match rules for books collection
+    match /books/{bookId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && isValidId(bookId)
+        && isValidBook(incoming())
+        && incoming().createdAt == request.time
+        && incoming().keys().hasAll(['id', 'authorId', 'title', 'createdAt'])
+        && incoming().keys().size() >= 4
+        && incoming().keys().size() <= 20;
+      allow update: if isSignedIn()
+        && isValidId(bookId)
+        && isValidBook(incoming())
+        && incoming().id == resource.data.id
+        && incoming().authorId == resource.data.authorId
+        && (incoming().createdAt == resource.data.createdAt || !('createdAt' in resource.data));
+      allow delete: if isSignedIn()
+        && isValidId(bookId);
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if isSignedIn()
+          && isValidId(bookId)
+          && isValidId(reviewId)
+          && isValidBookReview(incoming(), request.auth.uid)
+          && incoming().bookId == bookId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && incoming().keys().hasAll(['id', 'bookId', 'userId', 'userName', 'text', 'createdAt', 'updatedAt'])
+          && incoming().keys().size() >= 7
+          && incoming().keys().size() <= 8;
+        allow update: if isSignedIn()
+          && isValidId(bookId)
+          && isValidId(reviewId)
+          && resource.data.userId == request.auth.uid
+          && isValidBookReview(incoming(), request.auth.uid)
+          && incoming().id == resource.data.id
+          && incoming().bookId == resource.data.bookId
+          && incoming().userId == resource.data.userId
+          && incoming().userName == resource.data.userName
+          && incoming().createdAt == resource.data.createdAt
+          && incoming().updatedAt == request.time
+          && incoming().keys().hasAll(['id', 'bookId', 'userId', 'userName', 'text', 'createdAt', 'updatedAt'])
+          && incoming().keys().size() >= 7
+          && incoming().keys().size() <= 8;
+        allow delete: if isSignedIn()
+          && isValidId(bookId)
+          && isValidId(reviewId)
+          && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Match rules for daily_couplets collection
+    match /daily_couplets/{coupletId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && isValidId(coupletId)
+        && isValidDailyCouplet(incoming())
+        && incoming().createdAt == request.time
+        && incoming().keys().hasAll(['id', 'urdu', 'poet', 'category', 'createdAt'])
+        && incoming().keys().size() >= 4
+        && incoming().keys().size() <= 9;
+      allow update: if isSignedIn()
+        && isValidId(coupletId)
+        && isValidDailyCouplet(incoming())
+        && incoming().id == resource.data.id
+        && incoming().createdAt == resource.data.createdAt;
+      allow delete: if isSignedIn()
+        && isValidId(coupletId);
+    }
+
+    // Match rules for saved_shers nested under users
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /saved_shers/{sherId} {
+        // Read: A user can only read their own saved shers
+        allow get, list: if isOwner(userId);
+
+        // Create: Validated schema, correct ownership, proper timestamp
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(sherId)
+          && isValidSher(incoming(), userId)
+          && incoming().keys().hasAll(['id', 'urdu', 'roman', 'english', 'poet', 'userId', 'createdAt'])
+          && incoming().keys().size() >= 7 
+          && incoming().keys().size() <= 9;
+
+        // No updates are permitted for saved shers. If they want to change, they compose a new one or delete.
+        allow update: if false;
+
+        // Delete: Only the owner can delete their shers
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(sherId);
+      }
+
+      match /book_progress/{bookId} {
+        // Read: A user can read their own book progress
+        allow get, list: if isOwner(userId);
+
+        // Create: Validated schema, correct ownership, proper timestamp
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(bookId)
+          && isValidBookProgress(incoming(), userId)
+          && incoming().keys().hasAll(['bookId', 'userId', 'readProgress', 'listenProgress', 'lastUpdated'])
+          && incoming().keys().size() == 5;
+
+        // Update: Validated schema, correct ownership, immutable bookId and userId, proper timestamp
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(bookId)
+          && isValidBookProgress(incoming(), userId)
+          && incoming().bookId == resource.data.bookId
+          && incoming().userId == resource.data.userId
+          && incoming().keys().hasAll(['bookId', 'userId', 'readProgress', 'listenProgress', 'lastUpdated'])
+          && incoming().keys().size() == 5;
+
+        // Delete: Only the owner can delete their book progress
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(bookId);
+      }
+    }
+  }
+}

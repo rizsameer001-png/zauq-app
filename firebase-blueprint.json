@@ -1,0 +1,363 @@
+{
+  "entities": {
+    "Sher": {
+      "title": "Sher",
+      "description": "A couplet or poetic verse saved by a user in their personal Deewan notebook",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the saved sher"
+        },
+        "urdu": {
+          "type": "string",
+          "description": "The Urdu script representation of the couplet"
+        },
+        "roman": {
+          "type": "string",
+          "description": "The transliterated Roman text of the couplet"
+        },
+        "english": {
+          "type": "string",
+          "description": "The English translation of the couplet"
+        },
+        "poet": {
+          "type": "string",
+          "description": "The name of the poet who composed the couplet"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Optional translation explanation or commentary"
+        },
+        "isUserAdded": {
+          "type": "boolean",
+          "description": "Whether this is an original user composition"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who saved this couplet"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the couplet was saved to the database"
+        }
+      },
+      "required": ["id", "urdu", "roman", "english", "poet", "userId", "createdAt"]
+    },
+    "ZauqVideo": {
+      "title": "ZauqVideo",
+      "description": "A video curated by the administrator representing classical performances (Qawwali, Ghazal recitation, Sitar performance)",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the curated video"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the video"
+        },
+        "artist": {
+          "type": "string",
+          "description": "The artist, poet, or reciter featured in the video"
+        },
+        "url": {
+          "type": "string",
+          "description": "The URL of the video (e.g., YouTube video page, embed link, or stream)"
+        },
+        "description": {
+          "type": "string",
+          "description": "An optional description or context for the performance"
+        },
+        "category": {
+          "type": "string",
+          "description": "The style or genre of the video (e.g. Qawwali, Recitation, Sitar Solo, Ghazal Singing)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the video record was added to the database"
+        }
+      },
+      "required": ["id", "title", "artist", "url", "category", "createdAt"]
+    },
+    "Author": {
+      "title": "Author",
+      "description": "A classical Urdu poet or literary figure with biographical details and bibliography",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the author"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the author"
+        },
+        "bio": {
+          "type": "string",
+          "description": "Biographical summary of the author"
+        },
+        "birthPlace": {
+          "type": "string",
+          "description": "Birthplace or origin of the author"
+        },
+        "activeYears": {
+          "type": "string",
+          "description": "Years of active literary composition"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL or local path to a profile image or painting"
+        },
+        "isLocalImage": {
+          "type": "boolean",
+          "description": "Whether the image is hosted locally"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the author profile was created"
+        }
+      },
+      "required": ["id", "name", "createdAt"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "A classic printed book, manuscript, or compilation of works belonging to an author",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the book"
+        },
+        "authorId": {
+          "type": "string",
+          "description": "The unique ID of the author who penned this book"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the book"
+        },
+        "description": {
+          "type": "string",
+          "description": "An introductory description or summary of the book"
+        },
+        "coverImageUrl": {
+          "type": "string",
+          "description": "URL or local path of the book cover"
+        },
+        "isLocalCover": {
+          "type": "boolean",
+          "description": "Whether the book cover image is hosted locally"
+        },
+        "audioUrl": {
+          "type": "string",
+          "description": "Audio performance URL or audiobook local path"
+        },
+        "isLocalAudio": {
+          "type": "boolean",
+          "description": "Whether the audio is hosted locally"
+        },
+        "videoUrl": {
+          "type": "string",
+          "description": "URL of a reading or performance video associated with the book"
+        },
+        "videoType": {
+          "type": "string",
+          "enum": ["youtube", "direct", "upload"],
+          "description": "The source type of the video stream"
+        },
+        "files": {
+          "type": "array",
+          "description": "List of attached literary documents and ebook publications",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["pdf", "epub"] },
+              "url": { "type": "string" },
+              "isLocal": { "type": "boolean" }
+            },
+            "required": ["id", "name", "type", "url"]
+          }
+        },
+        "averageRating": {
+          "type": "number",
+          "description": "Average user rating of the book (0 to 5)"
+        },
+        "reviewsCount": {
+          "type": "number",
+          "description": "Total number of reviews submitted for this book"
+        },
+        "genre": {
+          "type": "string",
+          "description": "The literary genre of the book (e.g. Ghazal, Marsiya, Prose)"
+        },
+        "literaryPeriod": {
+          "type": "string",
+          "description": "The literary era or period of the book (e.g. Classical, Modern)"
+        },
+        "publisher": {
+          "type": "string",
+          "description": "The publishing house or organization"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the book record was registered"
+        }
+      },
+      "required": ["id", "authorId", "title", "createdAt"]
+    },
+    "BookProgress": {
+      "title": "BookProgress",
+      "description": "User progress tracker for classical books (reading and listening)",
+      "type": "object",
+      "properties": {
+        "bookId": {
+          "type": "string",
+          "description": "Unique identifier of the book"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier of the user"
+        },
+        "readProgress": {
+          "type": "number",
+          "description": "Percentage of book read (0 to 100)"
+        },
+        "listenProgress": {
+          "type": "number",
+          "description": "Percentage of book listened to (0 to 100)"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the progress was last recorded"
+        }
+      },
+      "required": ["bookId", "userId", "readProgress", "listenProgress", "lastUpdated"]
+    },
+    "DailyCouplet": {
+      "title": "DailyCouplet",
+      "description": "A curated couplet representing either a general Sher or a classical elegiac Mersiya verse, set for a specific date or active rotation",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the daily couplet"
+        },
+        "urdu": {
+          "type": "string",
+          "description": "The Urdu script representation of the couplet"
+        },
+        "roman": {
+          "type": "string",
+          "description": "The transliterated Roman text of the couplet"
+        },
+        "english": {
+          "type": "string",
+          "description": "The English translation of the couplet"
+        },
+        "poet": {
+          "type": "string",
+          "description": "The name of the poet who composed the couplet"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Optional commentary or Tashreeh"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Sher", "Mersiya"],
+          "description": "The poetry category (Sher or Mersiya)"
+        },
+        "activeDate": {
+          "type": "string",
+          "description": "Specific date this couplet is scheduled for (YYYY-MM-DD), or empty/generic"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the couplet was registered"
+        }
+      },
+      "required": ["id", "urdu", "poet", "category", "createdAt"]
+    },
+    "BookReview": {
+      "title": "BookReview",
+      "description": "A text-based review or commentary posted by an authenticated user for a classic book",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the review"
+        },
+        "bookId": {
+          "type": "string",
+          "description": "The unique ID of the book being reviewed"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who composed this review"
+        },
+        "userName": {
+          "type": "string",
+          "description": "The display name of the user who posted the review"
+        },
+        "text": {
+          "type": "string",
+          "description": "The text content of the review"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Optional aesthetic star rating from 1 to 5"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the review was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the review was last updated"
+        }
+      },
+      "required": ["id", "bookId", "userId", "userName", "text", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "books/{bookId}/reviews/{reviewId}": {
+      "schema": "BookReview",
+      "description": "Collection of reviews posted by users on classical books"
+    },
+    "users/{userId}/saved_shers/{sherId}": {
+      "schema": "Sher",
+      "description": "Collection of poetic verses saved or composed by the user"
+    },
+    "users/{userId}/book_progress/{bookId}": {
+      "schema": "BookProgress",
+      "description": "Reading and listening progress of classical books for the user"
+    },
+    "videos/{videoId}": {
+      "schema": "ZauqVideo",
+      "description": "Global collection of curated classical and performance videos"
+    },
+    "authors/{authorId}": {
+      "schema": "Author",
+      "description": "Global collection of classical Urdu literary authors"
+    },
+    "books/{bookId}": {
+      "schema": "Book",
+      "description": "Global collection of classical books and literary publications"
+    },
+    "daily_couplets/{coupletId}": {
+      "schema": "DailyCouplet",
+      "description": "Global collection of curated daily poetic inspirations managed by the administrator"
+    }
+  }
+}
