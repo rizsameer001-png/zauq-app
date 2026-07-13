@@ -1673,7 +1673,7 @@ For any inquiries regarding your data or to request account deletion, please con
             <p>© 2026 Zauq App. All rights reserved.</p>
             <p className="flex items-center gap-1">
               <span>Powered by</span>
-              <strong className="text-stone-400">Gemini 3.5 Flash</strong>
+              <strong className="text-stone-400">AI</strong>
             </p>
           </div>
         </footer>
