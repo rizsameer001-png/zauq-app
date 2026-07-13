@@ -194,10 +194,10 @@ export default function DailySher({
             <Quote className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-amber-500/80 font-bold block">
+            <span className="text-xs md:text-sm font-mono uppercase tracking-widest text-amber-500/80 font-bold block">
               {isRandomMode ? "Aesthetic Discovery" : "Daily Couplet Selection"}
             </span>
-            <span className="text-xs font-serif text-stone-400">
+            <span className="text-sm md:text-base font-serif text-stone-400">
               {isRandomMode ? "Selected at random" : "Featured Sher of the Day"}
             </span>
           </div>
@@ -207,7 +207,7 @@ export default function DailySher({
           {isRandomMode && (
             <button
               onClick={handleResetToDaily}
-              className="px-3 py-1.5 rounded-xl bg-stone-900/60 hover:bg-stone-900 text-amber-400 hover:text-amber-300 text-[10px] font-mono uppercase border border-stone-800 flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-stone-900/60 hover:bg-stone-900 text-amber-400 hover:text-amber-300 text-xs font-mono uppercase border border-stone-800 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span>Today's Featured</span>
@@ -216,7 +216,7 @@ export default function DailySher({
 
           <button
             onClick={handleGetRandomSher}
-            className="px-3 py-1.5 rounded-xl bg-stone-900/60 hover:bg-stone-900 text-stone-400 hover:text-stone-200 text-[10px] font-mono uppercase border border-stone-800 flex items-center gap-1.5 transition-all cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-stone-900/60 hover:bg-stone-900 text-stone-400 hover:text-stone-200 text-xs font-mono uppercase border border-stone-800 flex items-center gap-1.5 transition-all cursor-pointer"
             title="Discover another random couplet"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -226,32 +226,32 @@ export default function DailySher({
       </div>
 
       {/* Main Core Couplet Display */}
-      <div className="flex flex-col items-center text-center gap-6 py-4 relative z-10">
+      <div className="flex flex-col items-center text-center gap-6 py-6 relative z-10">
         {/* Large Aesthetic Urdu Calligraphy */}
         <motion.p 
           key={currentSher.urdu}
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
-          className="text-2xl md:text-3.5xl font-urdu text-amber-100/90 leading-[1.8] font-bold font-serif whitespace-pre-line tracking-wide drop-shadow-md select-all"
+          className="text-3xl md:text-4.5xl lg:text-5xl font-urdu text-stone-200 leading-[1.8] font-bold font-serif whitespace-pre-line tracking-wide drop-shadow-md select-all"
           dir="rtl"
         >
           {currentSher.urdu}
         </motion.p>
 
         {/* Translation Meta block */}
-        <div className="flex flex-col gap-1.5 max-w-2xl px-4">
+        <div className="flex flex-col gap-2 max-w-3xl px-4">
           {currentSher.roman && (
-            <p className="text-xs md:text-sm italic text-stone-400/85 tracking-wide leading-relaxed font-serif">
+            <p className="text-sm md:text-base lg:text-lg italic text-stone-400/85 tracking-wide leading-relaxed font-serif">
               {currentSher.roman}
             </p>
           )}
           {currentSher.english && (
-            <p className="text-sm md:text-base text-stone-300 tracking-wide font-serif leading-relaxed mt-1">
+            <p className="text-base md:text-lg lg:text-xl text-stone-300 tracking-wide font-serif leading-relaxed mt-1">
               "{currentSher.english}"
             </p>
           )}
-          <p className="text-[10px] font-mono uppercase tracking-widest text-amber-500/70 font-semibold mt-3">
+          <p className="text-xs md:text-sm font-mono uppercase tracking-widest text-amber-500/70 font-semibold mt-4">
             — {currentSher.poet}
           </p>
         </div>
@@ -263,7 +263,7 @@ export default function DailySher({
         {currentSher.explanation && (
           <button
             onClick={() => setShowExplanation(!showExplanation)}
-            className="text-stone-400 hover:text-amber-400 text-xs font-serif font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="text-stone-400 hover:text-amber-400 text-sm md:text-base font-serif font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <span>Ustaad's Commentary / Tashreeh</span>
             {showExplanation ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -351,11 +351,11 @@ export default function DailySher({
             className="overflow-hidden mt-4"
           >
             <div className="bg-stone-950/60 border border-amber-500/5 rounded-2xl p-5 mt-1">
-              <h5 className="text-[10px] font-mono uppercase tracking-wider text-amber-500/80 mb-2 flex items-center gap-1.5">
+              <h5 className="text-xs font-mono uppercase tracking-wider text-amber-500/80 mb-2 flex items-center gap-1.5 font-bold">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Philosophical Commentary / Tashreeh</span>
               </h5>
-              <p className="text-xs text-stone-400 font-serif leading-relaxed italic whitespace-pre-line">
+              <p className="text-sm md:text-base text-stone-400 font-serif leading-relaxed italic whitespace-pre-line">
                 {currentSher.explanation}
               </p>
             </div>

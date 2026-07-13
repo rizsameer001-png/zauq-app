@@ -61,3 +61,19 @@ export async function deleteMediaFile(id: string): Promise<void> {
     console.error("IndexedDB delete error in mediaDb:", err);
   }
 }
+
+export async function getAllCachedKeys(): Promise<string[]> {
+  try {
+    const db = await initMediaDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("media_blobs", "readonly");
+      const store = tx.objectStore("media_blobs");
+      const request = store.getAllKeys();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve((request.result || []) as string[]);
+    });
+  } catch (err) {
+    console.error("IndexedDB getAllKeys error in mediaDb:", err);
+    return [];
+  }
+}

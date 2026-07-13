@@ -26,13 +26,15 @@ import {
   FileText,
   Library,
   Calendar,
-  Clock
+  Clock,
+  Palette,
+  Type
 } from "lucide-react";
-import { Ghazal, Sher, ZauqVideo, Author, Book } from "../types";
+import { Ghazal, Sher, ZauqVideo, Author, Book, CMSPage } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { db, handleFirestoreError, OperationType, uploadToStorage, uploadToStorageWithProgress, sanitizeForFirestore } from "../firebase";
 import { generatePdfThumbnail } from "../utils/pdfThumbnail";
-import { doc, setDoc, deleteDoc, collection, serverTimestamp, updateDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, collection, serverTimestamp, updateDoc, getDoc, getDocs } from "firebase/firestore";
 import { saveVideoFile, deleteVideoFile, getVideoFile } from "../videoDb";
 import { saveMediaFile, deleteMediaFile, getMediaFile } from "../mediaDb";
 
@@ -59,8 +61,238 @@ export default function AdminPanel({
   onSignIn,
   triggerToast 
 }: AdminPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets">("ghazals");
+  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets" | "settings" | "cms">("ghazals");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Branding & Global Personalization Settings States
+  const [bgTheme, setBgTheme] = useState("midnight");
+  const [activeFont, setActiveFont] = useState("serif");
+  const [previewCustomText, setPreviewCustomText] = useState("");
+  
+  // Logo CRUD States
+  const [logoText, setLogoText] = useState("ZAUQ");
+  const [logoSubtitle, setLogoSubtitle] = useState("Urdu Literary Lounge");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logoUploadProgress, setLogoUploadProgress] = useState<number | null>(null);
+  
+  // Banner CRUD States
+  const [bannerHeading, setBannerHeading] = useState("Zauq Urdu Literary Lounge");
+  const [bannerTagline, setBannerTagline] = useState("");
+  const [bannerImageUrl, setBannerImageUrl] = useState("");
+  const [bannerLink, setBannerLink] = useState("deewan");
+  const [bannerUploadProgress, setBannerUploadProgress] = useState<number | null>(null);
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+
+  // CMS CRUD States
+  const [cmsPages, setCmsPages] = useState<CMSPage[]>([]);
+  const [selectedCmsPageId, setSelectedCmsPageId] = useState<string | null>(null);
+  const [cmsPageTitle, setCmsPageTitle] = useState("");
+  const [cmsPageContent, setCmsPageContent] = useState("");
+  const [isSavingCms, setIsSavingCms] = useState(false);
+  const [isLoadingCms, setIsLoadingCms] = useState(false);
+  const [cmsPageIdInput, setCmsPageIdInput] = useState("");
+
+  // Load global layout configuration on mount
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const configRef = doc(db, "settings", "global_config");
+        const docSnap = await getDoc(configRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setBgTheme(data.background || "midnight");
+          setActiveFont(data.font || "serif");
+          setLogoText(data.logoText || "ZAUQ");
+          setLogoSubtitle(data.logoSubtitle || "Urdu Literary Lounge");
+          setLogoUrl(data.logoUrl || "");
+          setBannerHeading(data.bannerHeading || "Zauq Urdu Literary Lounge");
+          setBannerTagline(data.bannerTagline || "");
+          setBannerImageUrl(data.bannerImageUrl || "");
+          setBannerLink(data.bannerLink || "deewan");
+        }
+      } catch (err) {
+        console.error("Error fetching settings:", err);
+      }
+    }
+    loadConfig();
+  }, []);
+
+  const handleSaveBranding = async () => {
+    try {
+      setIsSavingBranding(true);
+      const configRef = doc(db, "settings", "global_config");
+      await setDoc(configRef, {
+        id: "global_config",
+        background: bgTheme,
+        font: activeFont,
+        logoText,
+        logoSubtitle,
+        logoUrl,
+        bannerHeading,
+        bannerTagline,
+        bannerImageUrl,
+        bannerLink,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      triggerToast("Branding, logo, and home page banner layout settings updated successfully!");
+    } catch (err) {
+      console.error("Failed to save branding:", err);
+      triggerToast("Failed to save branding settings.");
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
+
+  // CMS Default Templates for about-us and privacy-policy
+  const DEFAULT_CMS_TEMPLATES: Record<string, { title: string; content: string }> = {
+    "about-us": {
+      title: "About Us - Zauq Urdu Literary Lounge",
+      content: `# Welcome to Zauq (ذوق)
+
+**Zauq Urdu Literary Lounge** is a sanctuary for classical poetry, timeless melodies, and rich literary heritage. Named after the royal poet *Sheikh Muhammad Ibrahim Zauq*, our mission is to resurrect the majestic elegance of the Urdu language and make it accessible to modern seekers of beauty.
+
+## Our Philosophy
+We believe that classical poetry is not merely ink on parchment, but a living breathing soul. Through delicate typography, rich commentary (Tashreeh), interactive *Beit-Bazi* duels, and high-fidelity acoustic recitations, we bridge the gap between ancient masters and contemporary digital audiences.
+
+### What You'll Find Here
+* **Deewan Notebook**: Compile your personal notebook of beloved verses (*Shers*) and original compositions.
+* **Classical Library**: Explore carefully digitized publications, manuscripts, and anthologies of masters like Ghalib, Iqbal, Mir Taqi Mir, and Faiz Ahmed Faiz.
+* **Samaa Performance Lounge**: Immerse yourself in high-quality performance videos, spiritual Qawwalis, and soulful Ghazal recitals.
+* **Beit Bazi**: Engage in the traditional game of verse-matching with our intelligent poetic engine.
+
+*“Laata hai us lab pe haseen har ek sher,*
+*Ghalib o Zauq ka silsila hai yahan...”*`
+    },
+    "privacy-policy": {
+      title: "Privacy Policy",
+      content: `# Privacy Policy
+
+**Effective Date: July 13, 2026**
+
+At **Zauq Urdu Literary Lounge**, we deeply respect the privacy of our patrons and poets. This privacy policy describes how we handle the minimal data collected on our platform.
+
+## 1. Information We Collect
+* **Personal Deewan & Notebooks**: When you sign in and save couplets (*Shers*) to your personal Deewan, these records are stored securely in our cloud database linked specifically to your unique user ID.
+* **Reading Progress**: We save progress logs for books you read or listen to in the library so you can seamlessly resume across devices.
+* **Third-Party Authentication**: We utilize secure sign-in (such as Google Sign-In) which safely validates your identity. We do not store your passwords.
+
+## 2. Security of Your Poetic Assets
+Your original compositions and saved verses are yours. They are protected by robust backend security rules that prevent other users from reading or editing your personal files.
+
+## 3. Contact Us
+For any inquiries regarding your data or to request account deletion, please contact us at **support@zauqapp.example.com**.`
+    }
+  };
+
+  // Load CMS pages when activeSubTab is "cms"
+  useEffect(() => {
+    if (activeSubTab !== "cms") return;
+    
+    async function loadCmsPages() {
+      try {
+        setIsLoadingCms(true);
+        const querySnapshot = await getDocs(collection(db, "cms_pages"));
+        const pages: CMSPage[] = [];
+        querySnapshot.forEach((docSnap) => {
+          pages.push({
+            id: docSnap.id,
+            ...docSnap.data()
+          } as CMSPage);
+        });
+        
+        setCmsPages(pages);
+      } catch (err) {
+        console.error("Error loading CMS pages:", err);
+        triggerToast("Failed to load CMS pages.");
+      } finally {
+        setIsLoadingCms(false);
+      }
+    }
+    loadCmsPages();
+  }, [activeSubTab]);
+
+  const handleSaveCmsPage = async () => {
+    const slug = selectedCmsPageId === "new" ? cmsPageIdInput.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-") : selectedCmsPageId;
+    if (!slug) {
+      triggerToast("Please select a page or enter a valid page slug.");
+      return;
+    }
+    if (!cmsPageTitle.trim()) {
+      triggerToast("Page title is required.");
+      return;
+    }
+    if (!cmsPageContent.trim()) {
+      triggerToast("Page content is required.");
+      return;
+    }
+    
+    try {
+      setIsSavingCms(true);
+      const pageRef = doc(db, "cms_pages", slug);
+      const payload = {
+        id: slug,
+        title: cmsPageTitle.trim(),
+        content: cmsPageContent,
+        updatedAt: serverTimestamp()
+      };
+      
+      await setDoc(pageRef, payload);
+      triggerToast(`CMS Page "${cmsPageTitle}" saved successfully!`);
+      
+      // Refresh pages list
+      const querySnapshot = await getDocs(collection(db, "cms_pages"));
+      const pages: CMSPage[] = [];
+      querySnapshot.forEach((docSnap) => {
+        pages.push({
+          id: docSnap.id,
+          ...docSnap.data()
+        } as CMSPage);
+      });
+      setCmsPages(pages);
+      setSelectedCmsPageId(slug);
+    } catch (err) {
+      console.error("Failed to save CMS page:", err);
+      triggerToast("Failed to save CMS page.");
+    } finally {
+      setIsSavingCms(false);
+    }
+  };
+
+  const handleDeleteCmsPage = async (slug: string) => {
+    if (slug === "about-us" || slug === "privacy-policy") {
+      triggerToast("Default pages 'about-us' and 'privacy-policy' cannot be deleted, but they can be edited!");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete the page "${slug}"?`)) {
+      return;
+    }
+    try {
+      setIsSavingCms(true);
+      await deleteDoc(doc(db, "cms_pages", slug));
+      triggerToast(`Page "${slug}" deleted successfully.`);
+      
+      // Refresh pages list
+      const querySnapshot = await getDocs(collection(db, "cms_pages"));
+      const pages: CMSPage[] = [];
+      querySnapshot.forEach((docSnap) => {
+        pages.push({
+          id: docSnap.id,
+          ...docSnap.data()
+        } as CMSPage);
+      });
+      setCmsPages(pages);
+      if (selectedCmsPageId === slug) {
+        setSelectedCmsPageId(null);
+        setCmsPageTitle("");
+        setCmsPageContent("");
+      }
+    } catch (err) {
+      console.error("Failed to delete CMS page:", err);
+      triggerToast("Failed to delete CMS page.");
+    } finally {
+      setIsSavingCms(false);
+    }
+  };
   
   // Editor States - Videos
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
@@ -1643,36 +1875,70 @@ export default function AdminPanel({
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Daily ({dailyCouplets.length})</span>
               </button>
+              <button
+                onClick={() => {
+                  setActiveSubTab("settings");
+                  setSearchQuery("");
+                }}
+                className={`py-1.5 px-1 rounded-xl text-[9px] font-semibold font-serif tracking-wide transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                  activeSubTab === "settings"
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+                    : "text-stone-500 hover:text-stone-300"
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Branding</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSubTab("cms");
+                  setSearchQuery("");
+                  setSelectedCmsPageId(null);
+                  setCmsPageTitle("");
+                  setCmsPageContent("");
+                }}
+                className={`py-1.5 px-1 rounded-xl text-[9px] font-semibold font-serif tracking-wide transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                  activeSubTab === "cms"
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+                    : "text-stone-500 hover:text-stone-300"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>CMS Pages</span>
+              </button>
             </div>
 
             {/* Search */}
-            <div className="bg-stone-900/40 p-4 rounded-2xl border border-stone-900/80 backdrop-blur-md">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder={
-                    activeSubTab === "poets" 
-                      ? "Search poets..." 
-                      : activeSubTab === "ghazals" 
-                      ? "Search ghazal titles..." 
-                      : activeSubTab === "videos" 
-                      ? "Search video details..." 
-                      : activeSubTab === "authors" 
-                      ? "Search authors..." 
-                      : activeSubTab === "books"
-                      ? "Search books..."
-                      : "Search daily couplets..."
-                  }
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-885 text-stone-200 placeholder-stone-600 rounded-xl py-2 pl-9 pr-4 text-xs focus:outline-none focus:border-amber-500/50 transition-colors"
-                />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-600">🔍</span>
+            {activeSubTab !== "settings" && activeSubTab !== "cms" && (
+              <div className="bg-stone-900/40 p-4 rounded-2xl border border-stone-900/80 backdrop-blur-md">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={
+                      activeSubTab === "poets" 
+                        ? "Search poets..." 
+                        : activeSubTab === "ghazals" 
+                        ? "Search ghazal titles..." 
+                        : activeSubTab === "videos" 
+                        ? "Search video details..." 
+                        : activeSubTab === "authors" 
+                        ? "Search authors..." 
+                        : activeSubTab === "books"
+                        ? "Search books..."
+                        : "Search daily couplets..."
+                    }
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-885 text-stone-200 placeholder-stone-600 rounded-xl py-2 pl-9 pr-4 text-xs focus:outline-none focus:border-amber-500/50 transition-colors"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-600">🔍</span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Master Selector List */}
-            <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 max-h-[450px] overflow-y-auto">
+            {activeSubTab !== "settings" && activeSubTab !== "cms" ? (
+              <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 max-h-[450px] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-stone-400">
                   {activeSubTab === "poets" 
@@ -1897,6 +2163,104 @@ export default function AdminPanel({
                 )
               )}
             </div>
+          ) : (
+            <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 flex flex-col gap-4">
+              {/* Brand Logo & Banner Live Preview */}
+              <div className="border border-stone-900 bg-stone-950/40 p-4 rounded-2xl flex flex-col gap-3 relative overflow-hidden">
+                <div className="absolute top-1.5 right-2 flex items-center gap-1 bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 rounded-md">
+                  <Sparkles className="w-2.5 h-2.5 text-amber-400 animate-pulse" />
+                  <span className="text-[7px] font-mono font-bold tracking-wider text-amber-300 uppercase">Live Mockup</span>
+                </div>
+                
+                <span className="text-[9px] font-mono uppercase tracking-widest text-stone-500 text-left">
+                  Header Brand Logo
+                </span>
+                
+                <div className="bg-stone-900 border border-stone-850/80 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        alt="Mock Logo" 
+                        className="w-8 h-8 object-contain rounded-lg shadow-sm border border-amber-500/20" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div className="flex flex-col text-left">
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display text-xs font-bold text-amber-500 tracking-widest">
+                          {logoText || "ZAUQ"}
+                        </span>
+                        <span className="font-urdu text-xs font-bold text-amber-400">ذوق</span>
+                      </div>
+                      <span className="text-[7px] font-mono text-stone-500 leading-none">
+                        {logoSubtitle || "Urdu Literary Lounge"}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-stone-700" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-stone-700" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-stone-700" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-stone-900 bg-stone-950/40 p-4 rounded-2xl flex flex-col gap-3 relative overflow-hidden">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-stone-500 text-left">
+                  Home Welcome Banner
+                </span>
+
+                <div 
+                  className={`relative flex flex-col items-center justify-center text-center py-6 border border-stone-900 bg-stone-950/80 rounded-2xl p-4 shadow-lg min-h-[160px] overflow-hidden theme-${bgTheme}`}
+                  style={{
+                    backgroundImage: bannerImageUrl ? `linear-gradient(to bottom, rgba(13, 11, 9, 0.85), rgba(13, 11, 9, 0.95)), url(${bannerImageUrl})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                >
+                  <div className="absolute inset-x-4 inset-y-1 border border-amber-500/5 rounded-xl pointer-events-none" />
+
+                  <div className="flex flex-col items-center max-w-full relative z-10">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-sm font-serif text-amber-500 font-bold tracking-wider font-display">
+                        {logoText || "ZAUQ"}
+                      </span>
+                      <span className="text-sm font-urdu text-amber-400 font-bold">
+                        ذوق
+                      </span>
+                    </div>
+                    
+                    <h4 className={`text-stone-200 text-xs font-semibold mb-1 truncate max-w-full ${
+                      activeFont === "serif" ? "font-serif" :
+                      activeFont === "sans" ? "font-sans" :
+                      activeFont === "display" ? "font-display" :
+                      activeFont === "mono" ? "font-mono" :
+                      activeFont === "nastaliq" ? "font-nastaliq" :
+                      activeFont === "diwani" ? "font-diwani" : ""
+                    }`}>
+                      {bannerHeading || "Zauq Urdu Literary Lounge"}
+                    </h4>
+
+                    <p className="text-[8px] text-stone-400 leading-normal max-w-xs italic mb-2 line-clamp-3">
+                      {bannerTagline || "Indulge in the finest classical Urdu literature..."}
+                    </p>
+
+                    {bannerLink !== "deewan" && (
+                      <div className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded text-[7px] font-mono uppercase tracking-widest">
+                        Links to: {bannerLink}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           </div>
 
@@ -4324,6 +4688,798 @@ export default function AdminPanel({
                     );
                   })()}
                 </div>
+              )}
+
+              {/* BRANDING & SETTINGS SUB-FORM */}
+              {activeSubTab === "settings" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="bg-stone-900/30 border border-stone-900 p-6 md:p-8 rounded-3xl flex flex-col gap-8 relative"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-900/60 pb-4 gap-4">
+                    <div className="text-left">
+                      <h4 className="text-sm font-serif font-bold text-amber-300">
+                        Global Branding & Personalization Lounge
+                      </h4>
+                      <p className="text-[10px] text-stone-500 mt-1">
+                        Customize themes, fonts, company logos, and high-visibility home banners. Updates are instantly applied globally.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSaveBranding}
+                      disabled={isSavingBranding}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-mono font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 flex-shrink-0"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{isSavingBranding ? "Saving..." : "Save Settings"}</span>
+                    </button>
+                  </div>
+
+                  {/* Section 1: Visual Theme & Backgrounds */}
+                  <div className="flex flex-col gap-4 text-left">
+                    <div className="flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-amber-400" />
+                      <h5 className="text-xs font-serif font-semibold text-stone-200">
+                        1. Interactive Layout Background & Themes
+                      </h5>
+                    </div>
+                    <p className="text-[10px] text-stone-500">
+                      Choose the default canvas aesthetic. This sets the background color palettes and highlight tones globally.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {[
+                        { id: "midnight", name: "Midnight Slate", desc: "Dark rich obsidian, classic gold", color: "bg-[#0c0a09]" },
+                        { id: "royal-velvet", name: "Royal Amethyst", desc: "Deep regal purple, rose accents", color: "bg-[#1a0b22]" },
+                        { id: "parchment", name: "Parchment Paper", desc: "Warm tactile light theme", color: "bg-[#faf7ed] border-stone-300" },
+                        { id: "emerald-court", name: "Emerald Court", desc: "Deep forest teal-jade and silver", color: "bg-[#0a201a]" },
+                        { id: "imperial-gold", name: "Imperial Amber-Gold", desc: "Courtly charcoal-amber", color: "bg-[#0d0b09]" },
+                        { id: "rosewood", name: "Rosewood Velvet", desc: "Crimson mahogany cherry-red", color: "bg-[#140507]" },
+                        { id: "ivory", name: "Mughal Ivory & Gold", desc: "Aesthetic ivory cream bright theme", color: "bg-[#fcfbf7] border-stone-300" },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setBgTheme(t.id)}
+                          className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-3 transition-all cursor-pointer ${
+                            bgTheme === t.id
+                              ? "border-amber-500 bg-amber-500/5 ring-2 ring-amber-500/20"
+                              : "border-stone-800 bg-stone-950/40 hover:bg-stone-900"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[10px] font-serif font-bold text-stone-200">{t.name}</span>
+                            <div className={`w-3 h-3 rounded-full ${t.color} border border-stone-850`} />
+                          </div>
+                          <span className="text-[8px] text-stone-500 font-mono leading-tight">{t.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section 2: Global Typography */}
+                  <div className="flex flex-col gap-4 border-t border-stone-900 pt-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <Type className="w-4 h-4 text-amber-400" />
+                      <h5 className="text-xs font-serif font-semibold text-stone-200">
+                        2. Master Font Selection (Typography Pairing)
+                      </h5>
+                    </div>
+                    <p className="text-[10px] text-stone-500">
+                      Select the primary typeface applied to headings, body texts, and poetry throughout the lounge.
+                    </p>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                      {/* Typography Dropdown Selector & Live Sample Row */}
+                      <div className="lg:col-span-12 bg-stone-950/45 border border-stone-900 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-4 justify-between">
+                        <div className="flex flex-col gap-1.5 w-full md:w-1/2">
+                          <label className="text-[10px] font-mono uppercase text-stone-400 tracking-wider font-bold">
+                            Typography Dropdown Selector
+                          </label>
+                          <select
+                            value={activeFont}
+                            onChange={(e) => setActiveFont(e.target.value)}
+                            className="bg-stone-900 border border-stone-800 text-stone-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500/50 w-full font-mono cursor-pointer transition-all hover:border-stone-700"
+                          >
+                            <option value="serif">Pristine Editorial (Playfair Display / Serif)</option>
+                            <option value="sans">Modern Geometric (Inter / Sans-serif)</option>
+                            <option value="display">Imperial Roman (Cinzel Display / Display)</option>
+                            <option value="mono">Technical Monospace (JetBrains Mono / Mono)</option>
+                            <option value="nastaliq">Urdu Nastaliq (نستعلیق)</option>
+                            <option value="diwani">Diwani / Ruqaa (ديواني رقعة)</option>
+                          </select>
+                        </div>
+
+                        {/* Live Font Sample immediately next to the dropdown */}
+                        <div className="bg-stone-950 border border-amber-500/10 rounded-xl p-3 flex-1 flex items-center justify-between gap-4 w-full md:w-auto h-full min-h-[50px]">
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-mono text-stone-500 uppercase tracking-wider">Live Sample Preview</span>
+                            <span className="text-[10px] text-stone-400">Selected: <strong className="text-amber-500 font-mono font-medium">{activeFont}</strong></span>
+                          </div>
+                          
+                          <div className="flex items-center gap-4">
+                            {/* Urdu / Arabic Word "ذوق" in selected font */}
+                            <div className="flex flex-col items-end">
+                              <span 
+                                className={`text-2xl text-amber-400 font-bold transition-all ${
+                                  activeFont === "serif" ? "font-serif" :
+                                  activeFont === "sans" ? "font-sans" :
+                                  activeFont === "display" ? "font-display" :
+                                  activeFont === "mono" ? "font-mono" :
+                                  activeFont === "nastaliq" ? "font-nastaliq text-3xl leading-normal" :
+                                  activeFont === "diwani" ? "font-diwani text-3xl leading-normal" : ""
+                                }`}
+                                dir="rtl"
+                              >
+                                ذوق
+                              </span>
+                              <span className="text-[7px] font-mono text-stone-600">Urdu / Arabic</span>
+                            </div>
+
+                            <div className="w-px h-6 bg-stone-800" />
+
+                            {/* Latin word "Zauq" in selected font */}
+                            <div className="flex flex-col items-start">
+                              <span 
+                                className={`text-base text-stone-200 font-bold transition-all ${
+                                  activeFont === "serif" ? "font-serif" :
+                                  activeFont === "sans" ? "font-sans" :
+                                  activeFont === "display" ? "font-display" :
+                                  activeFont === "mono" ? "font-mono" :
+                                  activeFont === "nastaliq" ? "font-nastaliq" :
+                                  activeFont === "diwani" ? "font-diwani" : ""
+                                }`}
+                              >
+                                Zauq
+                              </span>
+                              <span className="text-[7px] font-mono text-stone-600">Latin</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Left side: Options list */}
+                      <div className="lg:col-span-7 flex flex-col gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {[
+                            { id: "serif", name: "Pristine Editorial", sample: "Playfair Display", desc: "Classic Georgia & Playfair, literary tone", fontClass: "font-serif" },
+                            { id: "sans", name: "Modern Geometric", sample: "Inter Typeface", desc: "Clean Inter sans-serif, high legibility", fontClass: "font-sans" },
+                            { id: "display", name: "Imperial Roman", sample: "Cinzel Display", desc: "Elegant Cinzel serif display fonts", fontClass: "font-display" },
+                            { id: "mono", name: "Technical Monospace", sample: "JetBrains Mono", desc: "Technical JetBrains Mono, flat aesthetics", fontClass: "font-mono" },
+                            { id: "nastaliq", name: "Urdu Nastaliq", sample: "نستعلیق اردو", desc: "Authentic, beautiful Urdu calligraphy", fontClass: "font-nastaliq" },
+                            { id: "diwani", name: "Diwani / Ruqaa", sample: "ديواني رقعة", desc: "Aref Ruqaa cursive Arabic style", fontClass: "font-diwani" },
+                          ].map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setActiveFont(f.id)}
+                              className={`p-3 rounded-xl border text-left flex flex-col gap-2 transition-all cursor-pointer ${
+                                activeFont === f.id
+                                  ? "border-amber-500 bg-amber-500/5 ring-2 ring-amber-500/20"
+                                  : "border-stone-800 bg-stone-950/40 hover:bg-stone-900"
+                              }`}
+                            >
+                              <span className="text-[10px] font-mono text-stone-500">{f.name}</span>
+                              <span className={`text-sm text-amber-500 font-bold ${f.fontClass}`}>
+                                {f.sample}
+                              </span>
+                              <span className="text-[8px] text-stone-600 leading-tight mt-0.5">{f.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Right side: Live Preview */}
+                      <div className="lg:col-span-5 bg-stone-950/60 border border-stone-900 rounded-2xl p-4 flex flex-col gap-3">
+                        <div className="flex items-center justify-between border-b border-stone-905 pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-stone-400 font-bold">
+                              Live Typography Visualizer
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 uppercase font-bold">
+                            {[
+                              { id: "serif", name: "Pristine" },
+                              { id: "sans", name: "Geometric" },
+                              { id: "display", name: "Roman" },
+                              { id: "mono", name: "Mono" },
+                              { id: "nastaliq", name: "Nastaliq" },
+                              { id: "diwani", name: "Diwani" },
+                            ].find((o) => o.id === activeFont)?.name || "Active"}
+                          </span>
+                        </div>
+
+                        {/* Interactive Sample Card */}
+                        <div className="relative border border-amber-500/15 rounded-xl p-4 flex flex-col text-center justify-center bg-stone-950/90 shadow-inner overflow-hidden min-h-[160px]">
+                          {/* Sitar Accent Border */}
+                          <div className="absolute inset-x-4 inset-y-2 border border-amber-500/5 rounded-lg pointer-events-none" />
+                          
+                          <div className="relative z-10 flex flex-col gap-2">
+                            <h6 className="text-stone-500 text-[9px] uppercase tracking-widest font-bold font-mono text-center">
+                              Zauq Anthology Sample
+                            </h6>
+                            
+                            <div className="h-px w-10 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent mx-auto" />
+
+                            {previewCustomText.trim() ? (
+                              <p className={`text-stone-200 text-sm leading-relaxed ${
+                                activeFont === "nastaliq" || activeFont === "diwani" 
+                                  ? "text-lg font-medium py-1.5 text-amber-400" 
+                                  : "italic"
+                              } ${
+                                [
+                                  { id: "serif", fontClass: "font-serif" },
+                                  { id: "sans", fontClass: "font-sans" },
+                                  { id: "display", fontClass: "font-display" },
+                                  { id: "mono", fontClass: "font-mono" },
+                                  { id: "nastaliq", fontClass: "font-nastaliq" },
+                                  { id: "diwani", fontClass: "font-diwani" },
+                                ].find((o) => o.id === activeFont)?.fontClass || "font-serif"
+                              }`}
+                              dir={activeFont === "nastaliq" || activeFont === "diwani" ? "rtl" : "ltr"}
+                              >
+                                {previewCustomText}
+                              </p>
+                            ) : (
+                              <>
+                                {/* Urdu verses */}
+                                <p className={`text-amber-400 font-medium leading-loose text-base ${
+                                  [
+                                    { id: "serif", fontClass: "font-serif" },
+                                    { id: "sans", fontClass: "font-sans" },
+                                    { id: "display", fontClass: "font-display" },
+                                    { id: "mono", fontClass: "font-mono" },
+                                    { id: "nastaliq", fontClass: "font-nastaliq" },
+                                    { id: "diwani", fontClass: "font-diwani" },
+                                  ].find((o) => o.id === activeFont)?.fontClass || "font-serif"
+                                }`}
+                                dir="rtl"
+                                >
+                                  ہم پرورشِ لوح و قلم کرتے رہیں گے<br/>
+                                  جو دل پہ گزرتی ہے رقم کرتے رہیں گے
+                                </p>
+                                
+                                {/* English translation */}
+                                <p className={`text-[10px] text-stone-400 leading-relaxed max-w-xs mx-auto italic mt-1.5 ${
+                                  [
+                                    { id: "serif", fontClass: "font-serif" },
+                                    { id: "sans", fontClass: "font-sans" },
+                                    { id: "display", fontClass: "font-display" },
+                                    { id: "mono", fontClass: "font-mono" },
+                                    { id: "nastaliq", fontClass: "font-nastaliq" },
+                                    { id: "diwani", fontClass: "font-diwani" },
+                                  ].find((o) => o.id === activeFont)?.fontClass || "font-serif"
+                                }`}>
+                                  "We shall continue to nurture the tablet and the pen; whatever passes over the heart, we shall continue to write."
+                                </p>
+                                
+                                <span className={`text-[9px] text-stone-500 font-mono tracking-wider mt-1 block uppercase ${
+                                  [
+                                    { id: "serif", fontClass: "font-serif" },
+                                    { id: "sans", fontClass: "font-sans" },
+                                    { id: "display", fontClass: "font-display" },
+                                    { id: "mono", fontClass: "font-mono" },
+                                    { id: "nastaliq", fontClass: "font-nastaliq" },
+                                    { id: "diwani", fontClass: "font-diwani" },
+                                  ].find((o) => o.id === activeFont)?.fontClass || "font-serif"
+                                }`}>
+                                  — Faiz Ahmed Faiz
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Interactive testing field */}
+                        <div className="flex flex-col gap-1.5 mt-1">
+                          <label className="text-[9px] font-mono uppercase text-stone-500 tracking-wider">
+                            Interactive Typography Test Bench
+                          </label>
+                          <input
+                            type="text"
+                            value={previewCustomText}
+                            onChange={(e) => setPreviewCustomText(e.target.value)}
+                            placeholder="Type an English phrase, Urdu, or Arabic verse here to test..."
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-[11px] placeholder-stone-600 focus:outline-none focus:border-amber-500/50"
+                          />
+                          {previewCustomText && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewCustomText("")}
+                              className="text-[9px] font-mono text-stone-500 hover:text-stone-300 text-left cursor-pointer underline underline-offset-2 self-start"
+                            >
+                              Reset to Classical Faiz Couplet
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Brand Logo Setup (CRUD) */}
+                  <div className="flex flex-col gap-4 border-t border-stone-900 pt-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <h5 className="text-xs font-serif font-semibold text-stone-200">
+                        3. Header Brand Logo Customization (CRUD)
+                      </h5>
+                    </div>
+                    <p className="text-[10px] text-stone-500">
+                      Modify the brand name text, subtitle tagline, or upload a custom visual image logo to display in the header bar.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-stone-950/20 p-4 rounded-2xl border border-stone-900/60">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Brand Title Text
+                        </label>
+                        <input
+                          type="text"
+                          value={logoText}
+                          onChange={(e) => setLogoText(e.target.value)}
+                          placeholder="e.g. ZAUQ"
+                          className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Brand Subtitle Tagline
+                        </label>
+                        <input
+                          type="text"
+                          value={logoSubtitle}
+                          onChange={(e) => setLogoSubtitle(e.target.value)}
+                          placeholder="e.g. Urdu Literary Lounge"
+                          className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-2 flex flex-col gap-1.5">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Custom Logo Graphic Image
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input
+                            type="text"
+                            value={logoUrl}
+                            onChange={(e) => setLogoUrl(e.target.value)}
+                            placeholder="Enter image URL, or leave empty for standard Sitar Chiragh logo"
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50 flex-1"
+                          />
+                          <div className="relative">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              id="logo-image-uploader"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  uploadToStorageWithProgress(`branding/logo_${Date.now()}`, file, (progress) => {
+                                    setLogoUploadProgress(Math.round(progress));
+                                  }).then((url) => {
+                                    setLogoUrl(url);
+                                    setLogoUploadProgress(null);
+                                    triggerToast("Logo graphic uploaded successfully!");
+                                  }).catch((err) => {
+                                    console.error("Logo upload failed", err);
+                                    setLogoUploadProgress(null);
+                                    triggerToast("Logo upload failed.");
+                                  });
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor="logo-image-uploader"
+                              className="px-4 py-2 bg-stone-900 hover:bg-stone-850 text-stone-300 hover:text-stone-200 rounded-xl border border-stone-800 text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5 h-full whitespace-nowrap"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{logoUploadProgress !== null ? `${logoUploadProgress}%` : "Upload File"}</span>
+                            </label>
+                          </div>
+                          {logoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setLogoUrl("")}
+                              className="p-2 bg-stone-900 hover:bg-rose-950/20 text-stone-400 hover:text-rose-400 border border-stone-800 hover:border-rose-950/40 rounded-xl text-xs transition-colors cursor-pointer"
+                              title="Reset Logo to default SVG"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 4: Home Premium Banner (CRUD) */}
+                  <div className="flex flex-col gap-4 border-t border-stone-900 pt-6 text-left">
+                    <div className="flex items-center gap-2">
+                      <Tv className="w-4 h-4 text-amber-400" />
+                      <h5 className="text-xs font-serif font-semibold text-stone-200">
+                        4. Home Screen Premium Welcome Banner (CRUD)
+                      </h5>
+                    </div>
+                    <p className="text-[10px] text-stone-500">
+                      Configure the hero display welcoming users on the Deewan home page. Set a custom photo background and link a premium interactive tab call-to-action button.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-stone-950/20 p-4 rounded-2xl border border-stone-900/60">
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Welcome Banner Heading Text
+                        </label>
+                        <input
+                          type="text"
+                          value={bannerHeading}
+                          onChange={(e) => setBannerHeading(e.target.value)}
+                          placeholder="e.g. Zauq Urdu Literary Lounge"
+                          className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Welcome Banner Tagline Description
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={bannerTagline}
+                          onChange={(e) => setBannerTagline(e.target.value)}
+                          placeholder="Enter brief description welcoming visitors..."
+                          className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl p-3 text-xs focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Custom Banner Cover Photo
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input
+                            type="text"
+                            value={bannerImageUrl}
+                            onChange={(e) => setBannerImageUrl(e.target.value)}
+                            placeholder="Enter image URL, or leave empty for dynamic aesthetic grid"
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50 flex-1"
+                          />
+                          <div className="relative">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              id="banner-image-uploader"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  uploadToStorageWithProgress(`branding/banner_${Date.now()}`, file, (progress) => {
+                                    setBannerUploadProgress(Math.round(progress));
+                                  }).then((url) => {
+                                    setBannerImageUrl(url);
+                                    setBannerUploadProgress(null);
+                                    triggerToast("Banner graphic uploaded successfully!");
+                                  }).catch((err) => {
+                                    console.error("Banner upload failed", err);
+                                    setBannerUploadProgress(null);
+                                    triggerToast("Banner upload failed.");
+                                  });
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor="banner-image-uploader"
+                              className="px-4 py-2 bg-stone-900 hover:bg-stone-850 text-stone-300 hover:text-stone-200 rounded-xl border border-stone-800 text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5 h-full whitespace-nowrap"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>{bannerUploadProgress !== null ? `${bannerUploadProgress}%` : "Upload File"}</span>
+                            </label>
+                          </div>
+                          {bannerImageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setBannerImageUrl("")}
+                              className="p-2 bg-stone-900 hover:bg-rose-950/20 text-stone-400 hover:text-rose-400 border border-stone-800 hover:border-rose-950/40 rounded-xl text-xs transition-colors cursor-pointer"
+                              title="Reset Banner to default gradient background"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 md:col-span-2">
+                        <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                          Welcome Button Action Destination Link
+                        </label>
+                        <select
+                          value={bannerLink}
+                          onChange={(e) => setBannerLink(e.target.value)}
+                          className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50 cursor-pointer"
+                        >
+                          <option value="deewan">Deewan (Keep home anthology view)</option>
+                          <option value="beitbazi">Beitbazi (Real-time AI Poetic Duel)</option>
+                          <option value="sitar">Interactive Sitar (Sound Synthesis Room)</option>
+                          <option value="dictionary">Zauq-e-Lafz (Classical Urdu Dictionary)</option>
+                          <option value="card">Card Designer (Quote Card Customizer)</option>
+                          <option value="videos">Sama'a Lounge (Video Performance Stage)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* CMS SUB-FORM */}
+              {activeSubTab === "cms" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="bg-stone-900/30 border border-stone-900 p-6 md:p-8 rounded-3xl flex flex-col gap-6 relative"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-900/60 pb-4 gap-4">
+                    <div className="text-left">
+                      <h4 className="text-sm font-serif font-bold text-amber-300">
+                        Content Management System (CMS) Lounge
+                      </h4>
+                      <p className="text-[10px] text-stone-500 mt-1">
+                        Create, edit, and publish custom static pages like "About Us" and "Privacy Policy" that are seamlessly linked to your homepage footer.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
+                    {/* Left Column: Pages List */}
+                    <div className="lg:col-span-4 bg-stone-950/40 p-4 rounded-2xl border border-stone-900 flex flex-col gap-4">
+                      <div className="flex justify-between items-center">
+                        <h5 className="text-[11px] font-mono uppercase tracking-widest text-amber-500 font-semibold">
+                          Published Pages
+                        </h5>
+                        <button
+                          onClick={() => {
+                            setSelectedCmsPageId("new");
+                            setCmsPageTitle("");
+                            setCmsPageContent("");
+                            setCmsPageIdInput("");
+                          }}
+                          className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>New Page</span>
+                        </button>
+                      </div>
+
+                      {isLoadingCms ? (
+                        <div className="py-8 text-center text-xs text-stone-500">Loading CMS Pages...</div>
+                      ) : cmsPages.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-stone-500 flex flex-col gap-3">
+                          <p>No custom pages found.</p>
+                          <div className="flex flex-col gap-2 px-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  setIsSavingCms(true);
+                                  const aboutRef = doc(db, "cms_pages", "about-us");
+                                  await setDoc(aboutRef, {
+                                    id: "about-us",
+                                    title: DEFAULT_CMS_TEMPLATES["about-us"].title,
+                                    content: DEFAULT_CMS_TEMPLATES["about-us"].content,
+                                    updatedAt: serverTimestamp()
+                                  });
+                                  const privacyRef = doc(db, "cms_pages", "privacy-policy");
+                                  await setDoc(privacyRef, {
+                                    id: "privacy-policy",
+                                    title: DEFAULT_CMS_TEMPLATES["privacy-policy"].title,
+                                    content: DEFAULT_CMS_TEMPLATES["privacy-policy"].content,
+                                    updatedAt: serverTimestamp()
+                                  });
+                                  triggerToast("Successfully bootstrapped About Us & Privacy Policy pages!");
+                                  // Refresh
+                                  const querySnapshot = await getDocs(collection(db, "cms_pages"));
+                                  const pages: CMSPage[] = [];
+                                  querySnapshot.forEach((docSnap) => {
+                                    pages.push({
+                                      id: docSnap.id,
+                                      ...docSnap.data()
+                                    } as CMSPage);
+                                  });
+                                  setCmsPages(pages);
+                                } catch (err) {
+                                  console.error(err);
+                                  triggerToast("Failed to bootstrap pages.");
+                                } finally {
+                                  setIsSavingCms(false);
+                                }
+                              }}
+                              className="w-full py-2 bg-amber-500 text-stone-950 font-mono font-bold text-[10px] uppercase rounded-xl hover:bg-amber-400 cursor-pointer"
+                            >
+                              🚀 Bootstrap Standard Pages
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto">
+                          {cmsPages.map((page) => (
+                            <div
+                              key={page.id}
+                              onClick={() => {
+                                setSelectedCmsPageId(page.id);
+                                setCmsPageTitle(page.title);
+                                setCmsPageContent(page.content);
+                              }}
+                              className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                                selectedCmsPageId === page.id
+                                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                                  : "bg-stone-900/40 border-stone-900 hover:border-stone-850 text-stone-300 hover:text-stone-100"
+                              }`}
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-xs font-serif font-bold truncate">{page.title}</span>
+                                <span className="text-[9px] font-mono text-stone-500">/{page.id}</span>
+                              </div>
+                              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedCmsPageId(page.id);
+                                    setCmsPageTitle(page.title);
+                                    setCmsPageContent(page.content);
+                                  }}
+                                  className="p-1 text-stone-400 hover:text-amber-400 hover:bg-stone-900/60 rounded"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                {page.id !== "about-us" && page.id !== "privacy-policy" && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteCmsPage(page.id);
+                                    }}
+                                    className="p-1 text-stone-400 hover:text-rose-400 hover:bg-stone-900/60 rounded"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick Prefill Assist card */}
+                      <div className="mt-4 p-3 rounded-xl bg-stone-900/20 border border-stone-900 flex flex-col gap-2">
+                        <span className="text-[10px] font-mono text-stone-500 uppercase">Quick templates</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedCmsPageId("new");
+                              setCmsPageIdInput("about-us");
+                              setCmsPageTitle(DEFAULT_CMS_TEMPLATES["about-us"].title);
+                              setCmsPageContent(DEFAULT_CMS_TEMPLATES["about-us"].content);
+                              triggerToast("Prefilled template for 'about-us'!");
+                            }}
+                            className="p-2 text-center rounded border border-stone-800 hover:border-amber-500/30 text-[9px] font-mono text-stone-400 hover:text-amber-300 transition-all cursor-pointer"
+                          >
+                            About Us
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedCmsPageId("new");
+                              setCmsPageIdInput("privacy-policy");
+                              setCmsPageTitle(DEFAULT_CMS_TEMPLATES["privacy-policy"].title);
+                              setCmsPageContent(DEFAULT_CMS_TEMPLATES["privacy-policy"].content);
+                              triggerToast("Prefilled template for 'privacy-policy'!");
+                            }}
+                            className="p-2 text-center rounded border border-stone-800 hover:border-amber-500/30 text-[9px] font-mono text-stone-400 hover:text-amber-300 transition-all cursor-pointer"
+                          >
+                            Privacy Policy
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Page Editor */}
+                    <div className="lg:col-span-8 bg-stone-950/20 p-5 rounded-2xl border border-stone-900 flex flex-col gap-4">
+                      {selectedCmsPageId ? (
+                        <div className="flex flex-col gap-4">
+                          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between border-b border-stone-900 pb-3">
+                            <h5 className="text-xs font-mono uppercase text-amber-400 font-bold">
+                              {selectedCmsPageId === "new" ? "Create New Page" : `Editing: /${selectedCmsPageId}`}
+                            </h5>
+                            <button
+                              onClick={handleSaveCmsPage}
+                              disabled={isSavingCms}
+                              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-mono font-bold uppercase flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>{isSavingCms ? "Saving..." : "Save Page"}</span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                                Page Slug/ID (URL Path)
+                              </label>
+                              <input
+                                type="text"
+                                value={selectedCmsPageId === "new" ? cmsPageIdInput : selectedCmsPageId}
+                                onChange={(e) => setCmsPageIdInput(e.target.value)}
+                                disabled={selectedCmsPageId !== "new"}
+                                placeholder="e.g. about-us, privacy-policy"
+                                className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50 disabled:opacity-50"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                                User-Facing Page Title
+                              </label>
+                              <input
+                                type="text"
+                                value={cmsPageTitle}
+                                onChange={(e) => setCmsPageTitle(e.target.value)}
+                                placeholder="e.g. About Our Lounge, Terms of Service"
+                                className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                                Page Content (Markdown Supported)
+                              </label>
+                              <span className="text-[9px] text-stone-600 font-mono">Supports standard markdown formatting</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <textarea
+                                rows={14}
+                                value={cmsPageContent}
+                                onChange={(e) => setCmsPageContent(e.target.value)}
+                                placeholder="# Page Title&#10;&#10;Write markdown content here..."
+                                className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
+                              />
+                              <div className="bg-stone-950/60 border border-stone-900 rounded-xl p-3 text-xs overflow-y-auto max-h-[290px] leading-relaxed text-stone-300 text-left">
+                                <span className="text-[9px] font-mono text-stone-600 uppercase block mb-2 border-b border-stone-900 pb-1">Live Preview</span>
+                                {cmsPageContent ? (
+                                  <div className="markdown-preview whitespace-pre-wrap font-sans">
+                                    {cmsPageContent.split("\n").map((line, idx) => {
+                                      if (line.trim().startsWith("# ")) {
+                                        return <h1 key={idx} className="text-sm font-serif font-bold text-amber-400 mt-2 mb-1">{line.trim().substring(2)}</h1>;
+                                      } else if (line.trim().startsWith("## ")) {
+                                        return <h2 key={idx} className="text-xs font-serif font-bold text-amber-300 mt-2 mb-1">{line.trim().substring(3)}</h2>;
+                                      } else if (line.trim().startsWith("### ")) {
+                                        return <h3 key={idx} className="text-xs font-serif font-semibold text-stone-200 mt-1 mb-1">{line.trim().substring(4)}</h3>;
+                                      } else if (line.trim().startsWith("* ") || line.trim().startsWith("- ")) {
+                                        return <li key={idx} className="list-disc list-inside text-stone-400 pl-2">{line.trim().substring(2)}</li>;
+                                      } else if (line.trim().startsWith("> ")) {
+                                        return <blockquote key={idx} className="border-l-2 border-amber-500 pl-2 italic my-1 text-stone-400 bg-stone-900/30 p-1 rounded">{line.trim().substring(2)}</blockquote>;
+                                      } else {
+                                        return <p key={idx} className="mb-1 text-stone-300 min-h-[1em]">{line}</p>;
+                                      }
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-stone-600 italic">No content written yet. Preview will appear here.</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-24 text-center text-stone-500 flex flex-col items-center justify-center gap-3">
+                          <FileText className="w-8 h-8 text-stone-700" />
+                          <p className="text-xs">Select an existing CMS Page from the sidebar or click "New Page" to create a custom publishing route.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
               )}
 
             </AnimatePresence>

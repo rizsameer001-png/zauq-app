@@ -102,7 +102,31 @@ service cloud.firestore {
           && (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5));
     }
 
+    function isValidCMSPage(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+          && data.content is string && data.content.size() <= 50000;
+    }
+
+    // Match rules for CMS pages
+    match /cms_pages/{pageId} {
+      allow read: if true;
+      allow create, update: if isSignedIn()
+        && isValidId(pageId)
+        && isValidCMSPage(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().keys().hasAll(['id', 'title', 'content', 'updatedAt'])
+        && incoming().keys().size() == 4;
+      allow delete: if isSignedIn()
+        && isValidId(pageId);
+    }
+
     // Match rules for public poets and ghazals collections
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
     match /poets/{poetId} {
       allow read: if true;
       allow write: if isSignedIn();

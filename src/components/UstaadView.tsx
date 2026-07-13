@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Feather, Send, BookOpen, PenTool, CheckCircle, Info, RefreshCw, Heart, Share2, Volume2, VolumeX } from "lucide-react";
+import { Sparkles, Feather, Send, BookOpen, PenTool, CheckCircle, Info, RefreshCw, Heart, Share2, Volume2, VolumeX, AlertCircle } from "lucide-react";
 import { PoetryAssistResponse, Sher } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
@@ -213,19 +213,76 @@ export default function UstaadView({ onSaveSher, onEditInCardCreator, savedSherI
               </p>
             </motion.div>
           ) : errorMsg ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex-1 flex flex-col items-center justify-center bg-stone-900/10 border border-rose-950/40 text-rose-300 rounded-3xl p-8 text-center"
-            >
-              <p className="text-xs max-w-sm leading-relaxed mb-4">{errorMsg}</p>
-              <button
-                onClick={handleClear}
-                className="px-4 py-2 rounded-xl bg-stone-900 border border-stone-800 text-xs text-stone-300 hover:text-white"
-              >
-                Clear and Retry
-              </button>
-            </motion.div>
+            (() => {
+              const isPermissionDenied = errorMsg.toLowerCase().includes("denied access") || 
+                                         errorMsg.toLowerCase().includes("permission_denied") || 
+                                         errorMsg.toLowerCase().includes("403") ||
+                                         errorMsg.toLowerCase().includes("forbidden");
+              if (isPermissionDenied) {
+                return (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex-1 flex flex-col justify-center bg-stone-900/90 border border-amber-500/20 rounded-3xl p-6 text-left shadow-2xl relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex-shrink-0">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-2">
+                        <h4 className="text-sm font-sans font-bold text-stone-100 uppercase tracking-wide">
+                          Gemini API Key Denied Access
+                        </h4>
+                        <p className="text-xs text-stone-300 leading-relaxed font-serif">
+                          Your current Google AI Studio API key or GCP project is restricted from calling Gemini APIs. This occurs when using a restricted Google Workspace domain, or if your project lacks active access.
+                        </p>
+                        
+                        <div className="mt-2 bg-stone-950/60 p-4 rounded-2xl border border-stone-850/80 flex flex-col gap-2">
+                          <h5 className="text-[10px] font-mono uppercase tracking-widest text-amber-500 font-semibold">How to Resolve This:</h5>
+                          <ul className="list-decimal list-inside text-[11px] text-stone-400 font-sans space-y-2 leading-relaxed">
+                            <li>
+                              <strong className="text-stone-300">Set a personal API Key:</strong> Get a free API Key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">Google AI Studio</a> using a personal <span className="italic">@gmail.com</span> account.
+                            </li>
+                            <li>
+                              <strong className="text-stone-300">Add Key as a Secret:</strong> Open the <strong className="text-stone-300">Settings (Gear Icon ⚙️)</strong> in top-right, go to <strong className="text-stone-300">Secrets</strong>, and add/update your <code className="bg-stone-900 px-1 py-0.5 rounded text-amber-400 border border-stone-800 text-[10px]">GEMINI_API_KEY</code>.
+                            </li>
+                            <li>
+                              <strong className="text-stone-300">Enable Billing / Workspace Access:</strong> If Workspace-owned, make sure your admin allows generative AI access, or add a billing account to upgrade.
+                            </li>
+                          </ul>
+                        </div>
+                        
+                        <div className="mt-2 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={handleClear}
+                            className="px-4 py-2 bg-stone-800 hover:bg-stone-750 text-xs text-stone-300 hover:text-white rounded-xl border border-stone-700 transition-all cursor-pointer font-sans"
+                          >
+                            Dismiss & Retry
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              }
+              return (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex-1 flex flex-col items-center justify-center bg-stone-900/10 border border-rose-950/40 text-rose-300 rounded-3xl p-8 text-center"
+                >
+                  <p className="text-xs max-w-sm leading-relaxed mb-4">{errorMsg}</p>
+                  <button
+                    onClick={handleClear}
+                    className="px-4 py-2 rounded-xl bg-stone-900 border border-stone-800 text-xs text-stone-300 hover:text-white"
+                  >
+                    Clear and Retry
+                  </button>
+                </motion.div>
+              );
+            })()
           ) : response ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}

@@ -6,7 +6,7 @@ import { Sher, Ghazal, Book } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import DailySher from "./DailySher";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { getMediaFile } from "../mediaDb";
 
@@ -77,6 +77,10 @@ interface DeewanViewProps {
   dailyCouplets?: any[];
   books?: Book[];
   onOpenBook?: (book: Book) => void;
+  initialPoet?: string | null;
+  initialGhazal?: Ghazal | null;
+  onClearInitialPoet?: () => void;
+  onClearInitialGhazal?: () => void;
 }
 
 export default function DeewanView({ 
@@ -89,7 +93,11 @@ export default function DeewanView({
   ghazals = CURATED_GHAZALS,
   dailyCouplets = [],
   books = [],
-  onOpenBook
+  onOpenBook,
+  initialPoet,
+  initialGhazal,
+  onClearInitialPoet,
+  onClearInitialGhazal
 }: DeewanViewProps) {
   const [activeSection, setActiveSection] = useState<"anthology" | "saved">("anthology");
   const [selectedSavedSher, setSelectedSavedSher] = useState<Sher | null>(null);
@@ -99,6 +107,30 @@ export default function DeewanView({
   const [selectedGhazalState, setSelectedGhazalState] = useState<Ghazal | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedSherId, setCopiedSherId] = useState<string | null>(null);
+
+  // Focus initial poet/ghazal passed via prop from global search
+  useEffect(() => {
+    if (initialPoet) {
+      setSelectedPoet(initialPoet);
+      setActiveSection("anthology");
+      // Reset selected era/genre to avoid filter clashes
+      setSelectedEra(null);
+      setSelectedGenre(null);
+      if (onClearInitialPoet) onClearInitialPoet();
+    }
+  }, [initialPoet, onClearInitialPoet]);
+
+  useEffect(() => {
+    if (initialGhazal) {
+      setSelectedGhazalState(initialGhazal);
+      setActiveSection("anthology");
+      // Make sure the selected poet is set correctly if needed
+      setSelectedPoet(initialGhazal.poet);
+      setSelectedEra(null);
+      setSelectedGenre(null);
+      if (onClearInitialGhazal) onClearInitialGhazal();
+    }
+  }, [initialGhazal, onClearInitialGhazal]);
 
   // Export card modal states
   const [exportSher, setExportSher] = useState<Sher | null>(null);
@@ -300,14 +332,11 @@ export default function DeewanView({
       setIsGenerating(true);
       await new Promise((resolve) => setTimeout(resolve, 150));
       
-      const canvas = await html2canvas(exportCardRef.current, {
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: null,
-        scale: 2,
+      const dataUrl = await toPng(exportCardRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
       });
       
-      const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       const sanitizedPoet = exportSher.poet.replace(/\s+/g, "_").toLowerCase();
       link.download = `zauq_sher_${sanitizedPoet}_${Date.now()}.png`;
@@ -326,21 +355,22 @@ export default function DeewanView({
       setIsGenerating(true);
       await new Promise((resolve) => setTimeout(resolve, 150));
       
-      const canvas = await html2canvas(exportCardRef.current, {
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: null,
-        scale: 2,
+      const dataUrl = await toPng(exportCardRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
       });
       
-      const imgData = canvas.toDataURL("image/png");
+      const el = exportCardRef.current;
+      const width = el.clientWidth;
+      const height = el.clientHeight;
+      
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "px",
-        format: [canvas.width / 2, canvas.height / 2],
+        format: [width, height],
       });
       
-      pdf.addImage(imgData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
+      pdf.addImage(dataUrl, "PNG", 0, 0, width, height);
       const sanitizedPoet = exportSher.poet.replace(/\s+/g, "_").toLowerCase();
       pdf.save(`zauq_sher_${sanitizedPoet}_${Date.now()}.pdf`);
     } catch (err) {
@@ -390,32 +420,32 @@ export default function DeewanView({
         <motion.div
           whileHover={{ y: -4 }}
           transition={{ duration: 0.2 }}
-          className="relative overflow-hidden rounded-3xl border border-stone-900 bg-gradient-to-br from-stone-900/40 to-stone-950/60 p-6 md:p-8 flex flex-col justify-between gap-5 shadow-lg group"
+          className="relative overflow-hidden rounded-3xl border border-stone-900 bg-gradient-to-br from-stone-900/40 to-stone-950/60 p-6 md:p-8 flex flex-col justify-between gap-6 shadow-lg group"
         >
           {/* Subtle floral crown/accent on background */}
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/[0.01] rounded-full blur-xl pointer-events-none" />
           <div className="absolute inset-2 border border-amber-500/[0.02] rounded-2xl pointer-events-none" />
 
-          <div className="flex flex-col gap-3 relative z-10">
+          <div className="flex flex-col gap-4 relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+              <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-bold bg-amber-500/10 px-3 py-1 rounded-md border border-amber-500/20">
                 Aasnaf • Standalone Couplet
               </span>
-              <span className="font-urdu text-base text-amber-500/80">شعر</span>
+              <span className="font-urdu text-xl text-amber-500/85">شعر</span>
             </div>
-            <h3 className="text-xl font-serif text-stone-100 font-bold group-hover:text-amber-300 transition-colors">
+            <h3 className="text-2xl font-serif text-stone-100 font-bold group-hover:text-amber-300 transition-colors">
               Guldasta-e-Sher (Standalone Couplets)
             </h3>
-            <p className="text-xs text-stone-400 font-serif leading-relaxed">
+            <p className="text-sm text-stone-400 font-serif leading-relaxed">
               Explore standalone romantic and philosophical couplets. These self-contained gems deliver the ultimate punch of classical Urdu aesthetics in just two elegant lines.
             </p>
 
             {/* Micro Calligraphic Preview */}
-            <div className="bg-stone-950/40 border border-stone-900/80 p-4 rounded-xl text-center my-1">
-              <p className="text-base font-serif text-amber-200/90 font-urdu leading-relaxed whitespace-pre-line" dir="rtl">
+            <div className="bg-stone-950/40 border border-stone-900/80 p-5 rounded-2xl text-center my-2">
+              <p className="text-lg md:text-xl font-serif text-stone-200 font-urdu leading-relaxed whitespace-pre-line" dir="rtl">
                 عشق پر زور نہیں ہے یہ وہ آتش غالب{"\n"}کہ لگائے نہ لگے اور بجھائے نہ بنے
               </p>
-              <p className="text-[8px] font-mono uppercase tracking-wider text-stone-500 mt-2">— Mirza Ghalib</p>
+              <p className="text-xs font-mono uppercase tracking-wider text-stone-500 mt-3 font-semibold">— Mirza Ghalib</p>
             </div>
           </div>
 
@@ -431,7 +461,7 @@ export default function DeewanView({
                 if (el) el.scrollIntoView({ behavior: "smooth" });
               }, 100);
             }}
-            className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 hover:border-amber-500/40 text-xs font-mono uppercase tracking-widest font-bold transition-all cursor-pointer text-center relative z-10"
+            className="w-full py-3.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 hover:border-amber-500/40 text-xs md:text-sm font-mono uppercase tracking-widest font-bold transition-all cursor-pointer text-center relative z-10"
           >
             Explore Standalone Couplets
           </button>
@@ -441,31 +471,31 @@ export default function DeewanView({
         <motion.div
           whileHover={{ y: -4 }}
           transition={{ duration: 0.2 }}
-          className="relative overflow-hidden rounded-3xl border border-stone-900 bg-gradient-to-br from-stone-900/40 to-stone-950/60 p-6 md:p-8 flex flex-col justify-between gap-5 shadow-lg group"
+          className="relative overflow-hidden rounded-3xl border border-stone-900 bg-gradient-to-br from-stone-900/40 to-stone-950/60 p-6 md:p-8 flex flex-col justify-between gap-6 shadow-lg group"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/[0.01] rounded-full blur-xl pointer-events-none" />
           <div className="absolute inset-2 border border-amber-500/[0.02] rounded-2xl pointer-events-none" />
 
-          <div className="flex flex-col gap-3 relative z-10">
+          <div className="flex flex-col gap-4 relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+              <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-bold bg-amber-500/10 px-3 py-1 rounded-md border border-amber-500/20">
                 Aasnaf • Elegiac Poetry
               </span>
-              <span className="font-urdu text-base text-amber-500/80">مرثیہ</span>
+              <span className="font-urdu text-xl text-amber-500/85">مرثیہ</span>
             </div>
-            <h3 className="text-xl font-serif text-stone-100 font-bold group-hover:text-amber-300 transition-colors">
+            <h3 className="text-2xl font-serif text-stone-100 font-bold group-hover:text-amber-300 transition-colors">
               Mersiya-e-Anis (Elegiac Poetry)
             </h3>
-            <p className="text-xs text-stone-400 font-serif leading-relaxed">
+            <p className="text-sm text-stone-400 font-serif leading-relaxed">
               Experience the supreme nobility, moral values, and high tragedy of classical elegies. Portraying patience, courage, and truth in matchless epic descriptions.
             </p>
 
             {/* Micro Calligraphic Preview */}
-            <div className="bg-stone-950/40 border border-stone-900/80 p-4 rounded-xl text-center my-1">
-              <p className="text-base font-serif text-amber-200/90 font-urdu leading-relaxed whitespace-pre-line" dir="rtl">
+            <div className="bg-stone-950/40 border border-stone-900/80 p-5 rounded-2xl text-center my-2">
+              <p className="text-lg md:text-xl font-serif text-stone-200 font-urdu leading-relaxed whitespace-pre-line" dir="rtl">
                 رنگِ چہرہ جو اڑا تھا وہ بحال اب تو ہوا{"\n"}شکرِ حق دل کو مرے چین و ملال اب تو ہوا
               </p>
-              <p className="text-[8px] font-mono uppercase tracking-wider text-stone-500 mt-2">— Mir Babar Ali Anis</p>
+              <p className="text-xs font-mono uppercase tracking-wider text-stone-500 mt-3 font-semibold">— Mir Babar Ali Anis</p>
             </div>
           </div>
 
@@ -481,7 +511,7 @@ export default function DeewanView({
                 if (el) el.scrollIntoView({ behavior: "smooth" });
               }, 100);
             }}
-            className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 hover:border-amber-500/40 text-xs font-mono uppercase tracking-widest font-bold transition-all cursor-pointer text-center relative z-10"
+            className="w-full py-3.5 px-4 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 hover:border-amber-500/40 text-xs md:text-sm font-mono uppercase tracking-widest font-bold transition-all cursor-pointer text-center relative z-10"
           >
             Explore Elegiac Poetry
           </button>
@@ -501,15 +531,15 @@ export default function DeewanView({
                 <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-amber-500 font-bold block">
+                <span className="text-xs md:text-sm font-mono uppercase tracking-widest text-amber-500 font-bold block">
                   Kutub-e-Adab
                 </span>
-                <h3 className="text-lg font-serif font-bold text-stone-100 flex items-center gap-1.5 mt-0.5">
+                <h3 className="text-xl md:text-2xl font-serif font-bold text-stone-100 flex items-center gap-1.5 mt-0.5">
                   Publications Shelf
                 </h3>
               </div>
             </div>
-            <p className="text-xs text-stone-400 font-serif max-w-md md:text-right leading-relaxed">
+            <p className="text-sm text-stone-400 font-serif max-w-md md:text-right leading-relaxed">
               Explore publications, digital editions, and historical compilations. Click on any publication to read its PDF in your library.
             </p>
           </div>
@@ -520,7 +550,7 @@ export default function DeewanView({
                 <div 
                   key={book.id}
                   onClick={() => onOpenBook && onOpenBook(book)}
-                  className="bg-stone-900/30 border border-stone-900/80 hover:border-amber-500/30 hover:bg-stone-900/50 rounded-2xl p-3 flex flex-col gap-3 group cursor-pointer transition-all duration-300"
+                  className="bg-stone-900 border border-stone-800 hover:border-amber-500/30 hover:bg-stone-900 rounded-2xl p-3 flex flex-col gap-3 group cursor-pointer transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                 >
                   {/* Book Cover */}
                   <div className="aspect-[3/4.2] w-full rounded-xl overflow-hidden border border-stone-850 bg-stone-950 flex-shrink-0 relative shadow-md">
@@ -532,7 +562,7 @@ export default function DeewanView({
                     />
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-stone-950/65 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-1.5 p-2">
-                      <span className="text-[8px] font-mono uppercase tracking-widest bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="text-xs font-mono uppercase tracking-widest bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <Download className="w-2.5 h-2.5" />
                         <span>Read PDF</span>
                       </span>
@@ -542,17 +572,17 @@ export default function DeewanView({
                   {/* Book Metadata */}
                   <div className="flex-1 min-w-0 flex flex-col justify-between gap-1">
                     <div>
-                      <h4 className="text-xs font-serif font-bold text-stone-200 group-hover:text-amber-400 transition-colors truncate">
+                      <h4 className="text-sm font-serif font-bold text-stone-200 group-hover:text-amber-400 transition-colors truncate">
                         {book.title}
                       </h4>
                       {book.genre && (
-                        <span className="text-[8px] font-mono uppercase tracking-widest text-stone-500 block mt-0.5 truncate">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 block mt-0.5 truncate">
                           {book.genre}
                         </span>
                       )}
                     </div>
                     {book.averageRating !== undefined && book.averageRating > 0 && (
-                      <div className="flex items-center gap-0.5 mt-1 text-amber-400 text-[9px] font-mono font-bold">
+                      <div className="flex items-center gap-0.5 mt-1 text-amber-400 text-xs font-mono font-bold">
                         <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
                         <span>{book.averageRating} ({book.reviewsCount || 0})</span>
                       </div>
@@ -915,7 +945,7 @@ export default function DeewanView({
 
                 {/* Urdu Calligraphy Box */}
                 <div className="text-center py-4 border-b border-stone-900/40 select-text">
-                  <p className="text-2xl md:text-3xl text-amber-200/90 font-serif leading-loose tracking-wide whitespace-pre-line dir-rtl font-urdu">
+                  <p className="text-2xl md:text-3xl text-stone-200 font-serif leading-loose tracking-wide whitespace-pre-line dir-rtl font-urdu">
                     {selectedSavedSher.urdu}
                   </p>
                 </div>
@@ -1045,7 +1075,7 @@ export default function DeewanView({
                         )}
 
                         <div className="flex flex-col gap-4 text-center">
-                          <p className="text-lg text-amber-200/90 leading-loose font-serif font-urdu">
+                          <p className="text-lg text-stone-200 leading-loose font-serif font-urdu">
                             {sher.urdu}
                           </p>
                           {sher.roman && (
@@ -1230,7 +1260,7 @@ export default function DeewanView({
                     {/* Urdu Calligraphy Box */}
                     <div className="text-center py-4 px-4 md:px-8 border-b border-stone-900/40 select-text">
                       {/* Standard Nasta'liq helper layout */}
-                      <p className="text-2xl md:text-3xl text-amber-200/90 font-serif leading-loose tracking-wide whitespace-pre-line dir-rtl font-urdu">
+                      <p className="text-2xl md:text-3xl text-stone-200 font-serif leading-loose tracking-wide whitespace-pre-line dir-rtl font-urdu">
                         {sher.urdu}
                       </p>
                     </div>

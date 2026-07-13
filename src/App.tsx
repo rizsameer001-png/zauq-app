@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw } from "lucide-react";
+import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText } from "lucide-react";
 import DeewanView from "./components/DeewanView";
 import BeitBaziView from "./components/BeitBaziView";
 import UstaadView from "./components/UstaadView";
@@ -14,13 +14,13 @@ import LibraryView from "./components/LibraryView";
 import DailySherModal from "./components/DailySherModal";
 import RandomSherModal from "./components/RandomSherModal";
 import { Sher, Ghazal, ZauqVideo, Author, Book } from "./types";
-import { STARTER_SHERS, CLASSIC_POETS, CURATED_GHAZALS, STARTER_VIDEOS, STARTER_AUTHORS, STARTER_BOOKS } from "./data";
+import { STARTER_SHERS, CLASSIC_POETS, CURATED_GHAZALS, STARTER_VIDEOS, STARTER_AUTHORS, STARTER_BOOKS, DICTIONARY_WORDS } from "./data";
 import { motion, AnimatePresence } from "motion/react";
 
 // Firebase integration
 import { auth, db, googleProvider, OperationType, handleFirestoreError, testConnection } from "./firebase";
 import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, getDocs } from "firebase/firestore";
 
 const ZauqLogo = () => (
   <svg
@@ -68,7 +68,7 @@ type TabID = "deewan" | "beitbazi" | "ustaad" | "dictionary" | "card" | "sitar" 
 const THEMES = [
   { id: "midnight", name: "Midnight", color: "#0c0a09" },
   { id: "royal-velvet", name: "Royal Velvet", color: "#1a0b22" },
-  { id: "parchment", name: "Parchment", color: "#faf7ed" },
+  { id: "parchment", name: "Parchment", color: "#f5f5f4" },
   { id: "emerald-court", name: "Emerald Court", color: "#0a201a" },
 ] as const;
 
@@ -80,18 +80,175 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false);
 
+  // Dynamic Branding Settings (overridden by admin global_config)
+  const [globalTheme, setGlobalTheme] = useState<string>("midnight");
+  const [globalFont, setGlobalFont] = useState<string>("serif");
+  const [globalLogoText, setGlobalLogoText] = useState<string>("ZAUQ");
+  const [globalLogoSubtitle, setGlobalLogoSubtitle] = useState<string>("Urdu Literary Lounge");
+  const [globalLogoUrl, setGlobalLogoUrl] = useState<string>("");
+  const [globalBannerHeading, setGlobalBannerHeading] = useState<string>("Zauq Urdu Literary Lounge");
+  const [globalBannerTagline, setGlobalBannerTagline] = useState<string>("");
+  const [globalBannerImageUrl, setGlobalBannerImageUrl] = useState<string>("");
+  const [globalBannerLink, setGlobalBannerLink] = useState<string>("deewan");
+
+  // Real-time listener for dynamic branding settings
+  useEffect(() => {
+    const docRef = doc(db, "settings", "global_config");
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.background) setGlobalTheme(data.background);
+        if (data.font) setGlobalFont(data.font);
+        if (data.logoText) setGlobalLogoText(data.logoText);
+        if (data.logoSubtitle) setGlobalLogoSubtitle(data.logoSubtitle);
+        setGlobalLogoUrl(data.logoUrl || "");
+        if (data.bannerHeading) setGlobalBannerHeading(data.bannerHeading);
+        setGlobalBannerTagline(data.bannerTagline || "");
+        setGlobalBannerImageUrl(data.bannerImageUrl || "");
+        if (data.bannerLink) setGlobalBannerLink(data.bannerLink);
+      }
+    }, (err) => {
+      console.error("Error watching global config:", err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // CMS Dynamic Pages States
+  const [dynamicCmsPages, setDynamicCmsPages] = useState<{ id: string; title: string }[]>([]);
+  const [activeCmsPage, setActiveCmsPage] = useState<{ id: string; title: string; content: string } | null>(null);
+  const [isLoadingCmsPage, setIsLoadingCmsPage] = useState(false);
+
+  // Load published CMS page list for the footer
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "cms_pages"), (querySnapshot) => {
+      const pages: { id: string; title: string }[] = [];
+      querySnapshot.forEach((docSnap) => {
+        pages.push({
+          id: docSnap.id,
+          title: docSnap.data().title || docSnap.id
+        });
+      });
+      setDynamicCmsPages(pages);
+    }, (err) => {
+      console.error("Error watching cms pages:", err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleOpenCmsPage = async (slug: string) => {
+    try {
+      setIsLoadingCmsPage(true);
+      const docRef = doc(db, "cms_pages", slug);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setActiveCmsPage({
+          id: slug,
+          ...docSnap.data()
+        } as any);
+      } else {
+        // Fallbacks for standard pages in case they are not in the db yet
+        if (slug === "about-us") {
+          setActiveCmsPage({
+            id: "about-us",
+            title: "About Us - Zauq Urdu Literary Lounge",
+            content: `# Welcome to Zauq (ذوق)
+
+**Zauq Urdu Literary Lounge** is a sanctuary for classical poetry, timeless melodies, and rich literary heritage. Named after the royal poet *Sheikh Muhammad Ibrahim Zauq*, our mission is to resurrect the majestic elegance of the Urdu language and make it accessible to modern seekers of beauty.
+
+## Our Philosophy
+We believe that classical poetry is not merely ink on parchment, but a living breathing soul. Through delicate typography, rich commentary (Tashreeh), interactive *Beit-Bazi* duels, and high-fidelity acoustic recitations, we bridge the gap between ancient masters and contemporary digital audiences.
+
+### What You'll Find Here
+* **Deewan Notebook**: Compile your personal notebook of beloved verses (*Shers*) and original compositions.
+* **Classical Library**: Explore carefully digitized publications, manuscripts, and anthologies of masters like Ghalib, Iqbal, Mir Taqi Mir, and Faiz Ahmed Faiz.
+* **Samaa Performance Lounge**: Immerse yourself in high-quality performance videos, spiritual Qawwalis, and soulful Ghazal recitals.
+* **Beit Bazi**: Engage in the traditional game of verse-matching with our intelligent poetic engine.
+
+*“Laata hai us lab pe haseen har ek sher,*
+*Ghalib o Zauq ka silsila hai yahan...”*`
+          });
+        } else if (slug === "privacy-policy") {
+          setActiveCmsPage({
+            id: "privacy-policy",
+            title: "Privacy Policy",
+            content: `# Privacy Policy
+
+**Effective Date: July 13, 2026**
+
+At **Zauq Urdu Literary Lounge**, we deeply respect the privacy of our patrons and poets. This privacy policy describes how we handle the minimal data collected on our platform.
+
+## 1. Information We Collect
+* **Personal Deewan & Notebooks**: When you sign in and save couplets (*Shers*) to your personal Deewan, these records are stored securely in our cloud database linked specifically to your unique user ID.
+* **Reading Progress**: We save progress logs for books you read or listen to in the library so you can seamlessly resume across devices.
+* **Third-Party Authentication**: We utilize secure sign-in (such as Google Sign-In) which safely validates your identity. We do not store your passwords.
+
+## 2. Security of Your Poetic Assets
+Your original compositions and saved verses are yours. They are protected by robust backend security rules that prevent other users from reading or editing your personal files.
+
+## 3. Contact Us
+For any inquiries regarding your data or to request account deletion, please contact us at **support@zauqapp.example.com**.`
+          });
+        } else {
+          triggerToast(`The page "/${slug}" is not published yet.`);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load CMS page:", err);
+      triggerToast("Failed to load the requested page.");
+    } finally {
+      setIsLoadingCmsPage(false);
+    }
+  };
+
   // Theme state
-  const [theme, setTheme] = useState<"midnight" | "royal-velvet" | "parchment" | "emerald-court">(() => {
-    return (localStorage.getItem("zauq_theme") as any) || "midnight";
+  const [theme, setTheme] = useState<string>(() => {
+    return localStorage.getItem("zauq_theme") || "midnight";
   });
 
+  // Keep in sync with admin theme pushes
   useEffect(() => {
-    document.body.classList.remove("theme-royal-velvet", "theme-parchment", "theme-emerald-court");
+    if (globalTheme) {
+      setTheme(globalTheme);
+    }
+  }, [globalTheme]);
+
+  useEffect(() => {
+    document.body.classList.remove(
+      "theme-midnight",
+      "theme-royal-velvet",
+      "theme-parchment",
+      "theme-emerald-court",
+      "theme-imperial-gold",
+      "theme-rosewood",
+      "theme-ivory"
+    );
     if (theme !== "midnight") {
       document.body.classList.add(`theme-${theme}`);
     }
     localStorage.setItem("zauq_theme", theme);
   }, [theme]);
+
+  // Apply typography pairing globally to body
+  useEffect(() => {
+    document.body.classList.remove(
+      "font-serif",
+      "font-sans",
+      "font-display",
+      "font-mono",
+      "font-nastaliq",
+      "font-diwani"
+    );
+    const fontClassMap: Record<string, string> = {
+      serif: "font-serif",
+      sans: "font-sans",
+      display: "font-display",
+      mono: "font-mono",
+      nastaliq: "font-nastaliq",
+      diwani: "font-diwani"
+    };
+    const targetFontClass = fontClassMap[globalFont] || "font-serif";
+    document.body.classList.add(targetFontClass);
+  }, [globalFont]);
 
   // Dynamic collections from Firestore
   const [poets, setPoets] = useState<any[]>(CLASSIC_POETS);
@@ -105,6 +262,87 @@ export default function App() {
   // Auth states
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Global search query and focus states
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Selected entities from global search to route to specific views
+  const [focusedSearchPoet, setFocusedSearchPoet] = useState<string | null>(null);
+  const [focusedSearchGhazal, setFocusedSearchGhazal] = useState<Ghazal | null>(null);
+  const [focusedSearchWord, setFocusedSearchWord] = useState<any | null>(null);
+
+  // Real-time search matches computed dynamically
+  const searchResults = React.useMemo(() => {
+    if (!globalSearch.trim()) return { poets: [], ghazals: [], words: [] };
+    const query = globalSearch.toLowerCase().trim();
+
+    // 1. Poets matching name, bio or era
+    const matchedPoets = poets.filter(p => 
+      p.name?.toLowerCase().includes(query) ||
+      p.title?.toLowerCase().includes(query) ||
+      p.bio?.toLowerCase().includes(query) ||
+      p.era?.toLowerCase().includes(query)
+    );
+
+    // 2. Ghazals matching title, poet, or shers' urdu, roman, english
+    const matchedGhazals = ghazals.filter(g => 
+      g.title?.toLowerCase().includes(query) ||
+      g.poet?.toLowerCase().includes(query) ||
+      g.category?.toLowerCase().includes(query) ||
+      g.shers?.some((s: any) => 
+        s.urdu?.toLowerCase().includes(query) ||
+        s.roman?.toLowerCase().includes(query) ||
+        s.english?.toLowerCase().includes(query)
+      )
+    );
+
+    // 3. Dictionary words matching wordUrdu, wordRoman, meanings or perspective
+    const matchedWords = DICTIONARY_WORDS.filter(w => 
+      w.wordUrdu?.toLowerCase().includes(query) ||
+      w.wordRoman?.toLowerCase().includes(query) ||
+      w.pronunciation?.toLowerCase().includes(query) ||
+      w.meanings?.some(m => m.toLowerCase().includes(query)) ||
+      w.zauqPerspective?.toLowerCase().includes(query)
+    );
+
+    return {
+      poets: matchedPoets.slice(0, 5),
+      ghazals: matchedGhazals.slice(0, 5),
+      words: matchedWords.slice(0, 5)
+    };
+  }, [globalSearch, poets, ghazals]);
+
+  // Search item selection click handlers
+  const handleSelectSearchPoet = (poetName: string) => {
+    setFocusedSearchPoet(poetName);
+    setFocusedSearchGhazal(null);
+    setFocusedSearchWord(null);
+    setActiveTab("deewan");
+    setGlobalSearch("");
+    setIsSearchFocused(false);
+    triggerToast(`Selected poet: ${poetName} ✍️`);
+  };
+
+  const handleSelectSearchGhazal = (ghazal: Ghazal) => {
+    setFocusedSearchGhazal(ghazal);
+    setFocusedSearchPoet(null);
+    setFocusedSearchWord(null);
+    setActiveTab("deewan");
+    setGlobalSearch("");
+    setIsSearchFocused(false);
+    triggerToast(`Opened ghazal: ${ghazal.title} 📖`);
+  };
+
+  const handleSelectSearchWord = (word: any) => {
+    setFocusedSearchWord(word);
+    setFocusedSearchPoet(null);
+    setFocusedSearchGhazal(null);
+    setActiveTab("dictionary");
+    setGlobalSearch("");
+    setIsSearchFocused(false);
+    triggerToast(`Opened word: ${word.wordRoman} 🔍`);
+  };
 
   // Random Sher Modal state
   const [isRandomModalOpen, setIsRandomModalOpen] = useState(false);
@@ -633,20 +871,127 @@ export default function App() {
           className="flex items-center gap-2.5 cursor-pointer select-none group"
           id="zauq-branding-logo"
         >
-          <ZauqLogo />
+          {globalLogoUrl ? (
+            <img 
+              src={globalLogoUrl} 
+              alt="Brand Logo" 
+              className="w-8.5 h-8.5 object-contain rounded-lg border border-amber-500/20 shadow-sm" 
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <ZauqLogo />
+          )}
           <div className="flex flex-col">
             <div className="flex items-baseline gap-1.5">
-              <span className="font-display text-lg md:text-xl font-bold text-amber-500 tracking-widest leading-none group-hover:text-amber-400 transition-colors">
-                ZAUQ
+              <span className="font-display text-base md:text-lg font-bold text-amber-500 tracking-widest leading-none group-hover:text-amber-400 transition-colors uppercase">
+                {globalLogoText || "ZAUQ"}
               </span>
               <span className="font-urdu text-base font-bold text-amber-400 leading-none">
                 ذوق
               </span>
             </div>
             <span className="text-[8px] font-mono uppercase tracking-widest text-stone-500 hidden sm:inline-block leading-none mt-1">
-              Urdu Literary Lounge
+              {globalLogoSubtitle || "Urdu Literary Lounge"}
             </span>
           </div>
+        </div>
+
+        {/* Desktop Global Search Bar */}
+        <div className="hidden md:block relative max-w-[280px] lg:max-w-[340px] w-full mx-4" id="zauq-desktop-global-search">
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
+            <input
+              type="text"
+              placeholder="Search Ghazals, poets, vocabulary..."
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              className="w-full pl-10 pr-10 py-1.5 bg-stone-900/60 border border-stone-800/85 rounded-xl text-xs text-stone-200 placeholder:text-stone-500 focus:outline-none focus:ring-1.5 focus:ring-amber-500/50 focus:border-amber-500/40 focus:bg-stone-900 transition-all font-serif"
+            />
+            {globalSearch && (
+              <button 
+                onClick={() => setGlobalSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 transition-colors p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Floating Search Results Dropdown Panel */}
+          <AnimatePresence>
+            {isSearchFocused && globalSearch.trim().length > 0 && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsSearchFocused(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  className="absolute left-0 mt-2 w-[420px] max-h-[480px] overflow-y-auto rounded-2xl bg-stone-950 border border-stone-900 shadow-2xl p-3.5 z-50 flex flex-col gap-3.5 backdrop-blur-md"
+                >
+                  {/* Category: Poets */}
+                  {searchResults.poets.length > 0 && (
+                    <div className="flex flex-col gap-1.5 pb-2.5 border-b border-stone-900/80">
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-amber-500/80 font-bold px-2">Poets (Shu'ara)</span>
+                      {searchResults.poets.map((poet) => (
+                        <button
+                          key={poet.name}
+                          onClick={() => handleSelectSearchPoet(poet.name)}
+                          className="flex flex-col items-start text-left px-2 py-1.5 rounded-xl hover:bg-stone-900/60 transition-colors cursor-pointer w-full group/item"
+                        >
+                          <span className="text-xs font-serif font-bold text-stone-200 group-hover/item:text-amber-400 transition-colors">{poet.name}</span>
+                          <span className="text-[10px] text-stone-400 font-serif italic">{poet.title} ({poet.era})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Category: Ghazals */}
+                  {searchResults.ghazals.length > 0 && (
+                    <div className="flex flex-col gap-1.5 pb-2.5 border-b border-stone-900/80">
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-amber-500/80 font-bold px-2">Ghazals & Verses</span>
+                      {searchResults.ghazals.map((ghazal) => (
+                        <button
+                          key={ghazal.id}
+                          onClick={() => handleSelectSearchGhazal(ghazal)}
+                          className="flex flex-col items-start text-left px-2 py-1.5 rounded-xl hover:bg-stone-900/60 transition-colors cursor-pointer w-full group/item"
+                        >
+                          <span className="text-xs font-serif font-bold text-stone-200 truncate w-full group-hover/item:text-amber-400 transition-colors">{ghazal.title}</span>
+                          <span className="text-[10px] text-stone-400 font-serif">By {ghazal.poet} • {ghazal.category}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Category: Vocabulary */}
+                  {searchResults.words.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-amber-500/80 font-bold px-2">Urdu Vocabulary (Lafz)</span>
+                      {searchResults.words.map((word) => (
+                        <button
+                          key={word.wordRoman}
+                          onClick={() => handleSelectSearchWord(word)}
+                          className="flex items-center justify-between text-left px-2 py-1.5 rounded-xl hover:bg-stone-900/60 transition-colors cursor-pointer w-full group/item"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-xs font-serif font-bold text-stone-200 group-hover/item:text-amber-400 transition-colors">{word.wordRoman} ({word.pronunciation})</span>
+                            <span className="text-[10px] text-stone-400 font-serif truncate max-w-[280px]">{word.meanings.join(", ")}</span>
+                          </div>
+                          <span className="font-urdu text-base text-amber-400 font-bold group-hover/item:text-amber-300 transition-colors">{word.wordUrdu}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {searchResults.poets.length === 0 && searchResults.ghazals.length === 0 && searchResults.words.length === 0 && (
+                    <div className="py-8 text-center text-stone-500 text-xs italic">
+                      No matching results found for "{globalSearch}"
+                    </div>
+                  )}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Desktop Navigation Links */}
@@ -848,8 +1193,19 @@ export default function App() {
             >
               <div className="flex items-center justify-between border-b border-stone-900 pb-3">
                 <div className="flex items-center gap-2">
-                  <ZauqLogo />
-                  <span className="font-display text-base font-bold text-amber-500 tracking-wider">ZAUQ</span>
+                  {globalLogoUrl ? (
+                    <img 
+                      src={globalLogoUrl} 
+                      alt="Brand Logo" 
+                      className="w-7 h-7 object-contain rounded-md border border-amber-500/20" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <ZauqLogo />
+                  )}
+                  <span className="font-display text-base font-bold text-amber-500 tracking-wider uppercase">
+                    {globalLogoText || "ZAUQ"}
+                  </span>
                   <span className="font-urdu text-base font-bold text-amber-400">ذوق</span>
                 </div>
                 <button
@@ -858,6 +1214,97 @@ export default function App() {
                 >
                   <X className="w-4.5 h-4.5" />
                 </button>
+              </div>
+
+              {/* Mobile Search Bar */}
+              <div className="relative w-full" id="zauq-mobile-global-search">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
+                  <input
+                    type="text"
+                    placeholder="Search Ghazals, poets, vocabulary..."
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    className="w-full pl-10 pr-10 py-2.5 bg-stone-900 border border-stone-850 rounded-xl text-xs text-stone-200 placeholder:text-stone-500 focus:outline-none focus:ring-1.5 focus:ring-amber-500/50 transition-all font-serif"
+                  />
+                  {globalSearch && (
+                    <button 
+                      onClick={() => setGlobalSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Mobile Results Dropdown */}
+                {globalSearch.trim().length > 0 && (
+                  <div className="mt-2 max-h-[220px] overflow-y-auto rounded-xl bg-stone-900 border border-stone-850 p-2 flex flex-col gap-2 shadow-xl">
+                    {/* Category: Poets */}
+                    {searchResults.poets.length > 0 && (
+                      <div className="flex flex-col gap-1 pb-1.5 border-b border-stone-800/60">
+                        <span className="text-[8px] font-mono uppercase tracking-wider text-amber-500 font-bold px-1.5">Poets</span>
+                        {searchResults.poets.map((poet) => (
+                          <button
+                            key={poet.name}
+                            onClick={() => {
+                              handleSelectSearchPoet(poet.name);
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className="flex flex-col items-start text-left px-1.5 py-1 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer w-full"
+                          >
+                            <span className="text-xs font-serif font-bold text-stone-200">{poet.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Category: Ghazals */}
+                    {searchResults.ghazals.length > 0 && (
+                      <div className="flex flex-col gap-1 pb-1.5 border-b border-stone-800/60">
+                        <span className="text-[8px] font-mono uppercase tracking-wider text-amber-500 font-bold px-1.5">Ghazals</span>
+                        {searchResults.ghazals.map((ghazal) => (
+                          <button
+                            key={ghazal.id}
+                            onClick={() => {
+                              handleSelectSearchGhazal(ghazal);
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className="flex flex-col items-start text-left px-1.5 py-1 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer w-full"
+                          >
+                            <span className="text-xs font-serif font-bold text-stone-200 truncate w-full">{ghazal.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Category: Vocabulary */}
+                    {searchResults.words.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] font-mono uppercase tracking-wider text-amber-500 font-bold px-1.5">Vocabulary</span>
+                        {searchResults.words.map((word) => (
+                          <button
+                            key={word.wordRoman}
+                            onClick={() => {
+                              handleSelectSearchWord(word);
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className="flex items-center justify-between text-left px-1.5 py-1 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer w-full"
+                          >
+                            <span className="text-xs font-serif font-bold text-stone-200">{word.wordRoman}</span>
+                            <span className="font-urdu text-xs text-amber-400 font-bold">{word.wordUrdu}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {searchResults.poets.length === 0 && searchResults.ghazals.length === 0 && searchResults.words.length === 0 && (
+                      <div className="py-4 text-center text-stone-500 text-[10px] italic">
+                        No results found
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Mobile list */}
@@ -928,36 +1375,56 @@ export default function App() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="relative flex flex-col items-center justify-center text-center py-8 md:py-12 border border-stone-900/60 bg-stone-950/40 rounded-3xl p-6 shadow-xl"
+            className="relative flex flex-col items-center justify-center text-center py-12 md:py-20 border border-stone-800 bg-stone-900/40 rounded-3xl p-6 md:p-12 shadow-xl overflow-hidden"
+            style={{
+              backgroundImage: globalBannerImageUrl 
+                ? `${theme === "parchment" ? "linear-gradient(to bottom, rgba(249, 250, 251, 0.85), rgba(249, 250, 251, 0.98))" : "linear-gradient(to bottom, rgba(12, 10, 9, 0.82), rgba(12, 10, 9, 0.96))"}, url(${globalBannerImageUrl})`
+                : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
           >
             {/* Mughal Royal Arch Border Outline */}
-            <div className="absolute inset-x-8 inset-y-2 border border-amber-500/5 rounded-2xl pointer-events-none" />
+            <div className="absolute inset-x-8 inset-y-2 border border-amber-500/10 rounded-2xl pointer-events-none" />
 
-            <div className="flex flex-col items-center max-w-2xl">
+            <div className="flex flex-col items-center max-w-3xl relative z-10">
               {/* Cursive golden title Urdu calligraphic text */}
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-4xl md:text-5xl font-serif text-amber-500 font-bold select-none tracking-widest font-display">
-                  ZAUQ
+              <div className="flex items-center gap-4 mb-4">
+                <span className="text-4xl md:text-6xl font-serif text-amber-600 font-bold select-none tracking-widest font-display uppercase">
+                  {globalLogoText || "ZAUQ"}
                 </span>
-                <span className="text-4xl md:text-5xl font-urdu text-amber-400 font-bold select-none">
+                <span className="text-4xl md:text-6xl font-urdu text-amber-500 font-bold select-none">
                   ذوق
                 </span>
               </div>
               
-              <p className="text-stone-400 font-serif text-sm md:text-base italic tracking-wide max-w-lg mb-3">
-                "The Aesthetic Urdu Literary Lounge"
-              </p>
-              
-              <p className="text-[10px] text-stone-500 font-mono uppercase tracking-widest flex items-center gap-1.5 justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500/80" />
+              <h2 className="text-stone-200 text-2xl md:text-3.5xl lg:text-4xl font-serif font-bold mb-4 tracking-tight leading-snug">
+                {globalBannerHeading || "Zauq Urdu Literary Lounge"}
+              </h2>
+
+              <p className="text-xs md:text-sm text-amber-600 font-mono uppercase tracking-widest flex items-center gap-2 justify-center bg-amber-500/10 border border-amber-500/20 px-4 py-1.5 rounded-full font-semibold">
+                <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
                 <span>Full-Stack Anthology • AI Poetic Duel • Card Customizer</span>
               </p>
 
-              <div className="h-px w-24 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent my-4" />
+              <div className="h-px w-36 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent my-6" />
 
-              <p className="text-xs text-stone-400/80 leading-relaxed font-serif max-w-md italic">
-                Welcome to your courtly sanctuary. Dive into our live curated anthology of classical masters, test your literary wit in real-time AI verse battles, craft designed quote cards, or meditate to the gentle background drone of the Tanpura.
+              <p className="text-sm md:text-base lg:text-lg text-stone-400 leading-relaxed font-serif max-w-2xl italic mb-8">
+                {globalBannerTagline || "Welcome to your courtly sanctuary. Dive into our live curated anthology of classical masters, test your literary wit in real-time AI verse battles, craft designed quote cards, or meditate to the gentle background drone of the Tanpura."}
               </p>
+
+              {globalBannerLink && globalBannerLink !== "deewan" && (
+                <button
+                  onClick={() => {
+                    setActiveTab(globalBannerLink as TabID);
+                    setSelectedSherForCard(null);
+                  }}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-stone-950 font-mono text-xs font-bold uppercase tracking-widest transition-all shadow-md cursor-pointer flex items-center gap-2 hover:shadow-lg hover:scale-[1.02]"
+                >
+                  <span>Explore Featured Experience</span>
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -978,7 +1445,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Master View Router Stage */}
-        <main className="min-h-[500px]" id="zauq-portal-stage">
+        <main className="min-h-[500px] transition-[background-color,border-color,color,box-shadow] duration-500 ease-in-out border border-transparent rounded-3xl" id="zauq-portal-stage">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -1002,6 +1469,10 @@ export default function App() {
                     setAutoOpenBook(book);
                     setActiveTab("authors");
                   }}
+                  initialPoet={focusedSearchPoet}
+                  initialGhazal={focusedSearchGhazal}
+                  onClearInitialPoet={() => setFocusedSearchPoet(null)}
+                  onClearInitialGhazal={() => setFocusedSearchGhazal(null)}
                 />
               )}
 
@@ -1026,6 +1497,8 @@ export default function App() {
                   onSaveSher={handleSaveSher}
                   onEditInCardCreator={handleEditInCardCreator}
                   savedSherIds={savedShers.map((s) => s.id)}
+                  initialWord={focusedSearchWord}
+                  onClearInitialWord={() => setFocusedSearchWord(null)}
                 />
               )}
 
@@ -1093,8 +1566,19 @@ export default function App() {
             {/* Column 1: App Info */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
-                <ZauqLogo />
-                <span className="font-display text-sm font-semibold text-amber-500 tracking-widest">ZAUQ</span>
+                {globalLogoUrl ? (
+                  <img 
+                    src={globalLogoUrl} 
+                    alt="Brand Logo" 
+                    className="w-7 h-7 object-contain rounded-md border border-amber-500/20" 
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <ZauqLogo />
+                )}
+                <span className="font-display text-sm font-semibold text-amber-500 tracking-widest uppercase">
+                  {globalLogoText || "ZAUQ"}
+                </span>
                 <span className="font-urdu text-base font-semibold text-amber-400">ذوق</span>
               </div>
               <p className="text-[11px] leading-relaxed text-stone-400 font-serif italic">
@@ -1151,15 +1635,34 @@ export default function App() {
               </ul>
             </div>
 
-            {/* Column 4: System Integration */}
-            <div className="flex flex-col gap-2.5">
-              <h4 className="font-mono text-[10px] uppercase tracking-widest text-stone-300 font-semibold">Deewan Status</h4>
-              <div className="flex flex-col gap-2 text-[10px] font-mono">
+            {/* Column 4: Info & Pages */}
+            <div className="flex flex-col gap-2.5 text-left">
+              <h4 className="font-mono text-[10px] uppercase tracking-widest text-stone-300 font-semibold text-left">Tazkirah (About & Info)</h4>
+              <ul className="flex flex-col gap-1.5 text-[11px] font-serif mb-2 text-left">
+                <li>
+                  <button onClick={() => handleOpenCmsPage("about-us")} className="hover:text-amber-400 transition-colors cursor-pointer text-left font-semibold text-amber-500/90">
+                    About Our Lounge
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => handleOpenCmsPage("privacy-policy")} className="hover:text-amber-400 transition-colors cursor-pointer text-left">
+                    Privacy Policy
+                  </button>
+                </li>
+                {dynamicCmsPages.filter(p => p.id !== "about-us" && p.id !== "privacy-policy").map(page => (
+                  <li key={page.id}>
+                    <button onClick={() => handleOpenCmsPage(page.id)} className="hover:text-amber-400 transition-colors cursor-pointer text-left">
+                      {page.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-col gap-2 text-[10px] font-mono text-left">
                 <div className="flex items-center gap-1.5 bg-stone-900/40 border border-stone-800/50 rounded-lg p-2 text-stone-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Cloud DB Connected</span>
                 </div>
-                <p className="leading-relaxed text-[10px] text-stone-600 font-serif italic">
+                <p className="leading-relaxed text-[10px] text-stone-600 font-serif italic text-left">
                   Handcrafted for lovers of courtly South Asian literature. Inspired by <a href="https://zauq.site/" target="_blank" rel="noreferrer" className="text-amber-500/80 hover:text-amber-400 hover:underline">zauq.site</a>
                 </p>
               </div>
@@ -1194,6 +1697,83 @@ export default function App() {
           onRemoveSher={handleRemoveSher}
           onEditInCardCreator={handleEditInCardCreator}
         />
+
+        {/* Dynamic CMS Page Overlay Modal */}
+        <AnimatePresence>
+          {activeCmsPage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/85 backdrop-blur-md overflow-y-auto"
+              onClick={() => setActiveCmsPage(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-stone-900/90 border border-stone-850 rounded-3xl p-6 md:p-8 max-w-2xl w-full relative shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+              >
+                {/* Decorative Background Accents */}
+                <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-36 h-36 bg-amber-600/5 rounded-full blur-3xl pointer-events-none" />
+
+                {/* Close Button */}
+                <button
+                  onClick={() => setActiveCmsPage(null)}
+                  className="absolute top-4 right-4 p-2 rounded-full bg-stone-950/60 border border-stone-800 hover:bg-stone-800 text-stone-400 hover:text-stone-200 transition-all cursor-pointer z-10"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Header */}
+                <div className="border-b border-stone-800/80 pb-4 mb-6 text-left">
+                  <div className="flex items-center gap-2 text-amber-500 font-mono text-[9px] uppercase tracking-widest mb-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Zauq Publication Route</span>
+                  </div>
+                  <h2 className="text-xl md:text-2xl font-serif font-bold text-amber-100 tracking-tight leading-snug">
+                    {activeCmsPage.title}
+                  </h2>
+                </div>
+
+                {/* Main Content Area (Scrollable) */}
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar text-left text-stone-300 leading-relaxed text-sm font-serif space-y-4">
+                  {/* Markdown Renderer */}
+                  {activeCmsPage.content ? (
+                    <div className="prose prose-invert prose-amber max-w-none text-left">
+                      {activeCmsPage.content.split("\n").map((line, idx) => {
+                        const trimmed = line.trim();
+                        if (trimmed.startsWith("# ")) {
+                          return <h1 key={idx} className="text-xl md:text-2xl font-serif font-bold text-amber-400 mt-6 mb-3 border-b border-stone-850 pb-2">{trimmed.substring(2)}</h1>;
+                        } else if (trimmed.startsWith("## ")) {
+                          return <h2 key={idx} className="text-lg font-serif font-bold text-amber-300 mt-5 mb-2.5">{trimmed.substring(3)}</h2>;
+                        } else if (trimmed.startsWith("### ")) {
+                          return <h3 key={idx} className="text-sm font-serif font-semibold text-stone-200 mt-4 mb-2">{trimmed.substring(4)}</h3>;
+                        } else if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
+                          return <li key={idx} className="list-disc list-inside text-stone-300 pl-2 ml-2 my-1 leading-relaxed">{trimmed.substring(2)}</li>;
+                        } else if (trimmed.startsWith("> ")) {
+                          return <blockquote key={idx} className="border-l-4 border-amber-500/60 pl-4 py-1 italic my-4 text-stone-400 bg-stone-950/40 p-2 rounded-r-xl">{trimmed.substring(2)}</blockquote>;
+                        } else {
+                          return <p key={idx} className="mb-3 text-stone-300 leading-relaxed min-h-[1em]">{line}</p>;
+                        }
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-stone-500 italic">This page has no content published.</p>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="border-t border-stone-800/80 pt-4 mt-6 flex justify-between items-center text-[10px] font-mono text-stone-500">
+                  <span>Slug: /{activeCmsPage.id}</span>
+                  <span>Zauq CMS Core</span>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>

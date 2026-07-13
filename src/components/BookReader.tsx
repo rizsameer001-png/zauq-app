@@ -5,10 +5,19 @@ import {
   RotateCcw, Play, Pause, RefreshCw, Layers, Sparkles, BookMarked,
   ExternalLink, ZoomIn, ZoomOut
 } from "lucide-react";
-import { Book, BookFile, BookProgress } from "../types";
+import { Book, BookFile, BookProgress, Sher } from "../types";
 import { motion, AnimatePresence } from "motion/react";
-import { getMediaFile } from "../mediaDb";
-import { resolveBookUrl } from "../firebase";
+import { getMediaFile, saveMediaFile } from "../mediaDb";
+import { resolveBookUrl, db } from "../firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+
+export interface SavedHighlight {
+  id: string;
+  pageNum: number;
+  text: string;
+  createdAt: string;
+  sherId?: string;
+}
 
 interface PDFPageRendererProps {
   key?: React.Key;
@@ -17,14 +26,18 @@ interface PDFPageRendererProps {
   scale: number;
   theme: any;
   onPageVisible: (pageNum: number) => void;
+  pageHighlights?: SavedHighlight[];
+  onRemoveHighlight?: (id: string) => void;
 }
 
-function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible }: PDFPageRendererProps) {
+function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHighlights = [], onRemoveHighlight }: PDFPageRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isRendered, setIsRendered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const renderTaskRef = useRef<any>(null);
+
+  const hasHighlight = pageHighlights.length > 0;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -120,6 +133,11 @@ function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible }: PDFPa
     >
       <div className="absolute top-0 inset-x-0 h-10 px-6 bg-gradient-to-b from-stone-900/5 to-transparent flex items-center justify-between text-[10px] font-mono text-stone-400 select-none pointer-events-none z-10 border-b border-stone-800/5">
         <span className="uppercase tracking-widest text-[9px] font-bold text-stone-500 opacity-60 font-mono">Zauq Adab Publication</span>
+        {hasHighlight && (
+          <span className="text-[9px] text-amber-500 font-bold font-sans flex items-center gap-1 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/25">
+            ✨ Saved Verse
+          </span>
+        )}
         <span className="text-amber-600 font-bold font-mono">PAGE {pageNum}</span>
       </div>
 
@@ -137,6 +155,31 @@ function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible }: PDFPa
           className={`w-full h-auto transition-opacity duration-300 ${isRendered && !isLoading ? "opacity-100" : "opacity-0"}`}
         />
       </div>
+
+      {pageHighlights.length > 0 && (
+        <div className="absolute bottom-10 inset-x-0 bg-stone-950/95 border-t border-stone-900 px-6 py-2.5 flex flex-col gap-1.5 z-10 select-none">
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span className="text-[9px] font-mono uppercase tracking-widest text-amber-400 font-bold">Page Annotations</span>
+          </div>
+          <div className="flex flex-col gap-1 max-h-[80px] overflow-y-auto pr-1">
+            {pageHighlights.map((hl) => (
+              <div key={hl.id} className="flex items-center justify-between bg-stone-900/45 border border-stone-850/40 px-2.5 py-1 rounded-lg text-right gap-3">
+                <button 
+                  onClick={() => onRemoveHighlight?.(hl.id)}
+                  className="p-1 rounded hover:bg-red-500/10 text-stone-500 hover:text-red-400 transition-colors cursor-pointer"
+                  title="Delete Annotation"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+                <div className="flex-1">
+                  <p className="text-[10px] font-serif text-amber-200/90 leading-relaxed" dir="rtl">{hl.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-0 inset-x-0 h-10 px-6 bg-gradient-to-t from-stone-900/5 to-transparent flex items-center justify-center text-[10px] font-mono text-stone-400 select-none pointer-events-none z-10">
         <span className="font-bold text-stone-500 text-[11px] font-mono">- {pageNum} -</span>
@@ -197,7 +240,27 @@ export default function BookReader({
   const [newNoteText, setNewNoteText] = useState<string>("");
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showDebugTips, setShowDebugTips] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<"controls" | "notes" | "audio">("controls");
+  const [activeTab, setActiveTab] = useState<"controls" | "notes" | "audio" | "highlight">("controls");
+
+  // Highlights and annotations
+  interface SavedHighlight {
+    id: string;
+    pageNum: number;
+    text: string;
+    createdAt: string;
+    sherId?: string;
+  }
+  const [highlights, setHighlights] = useState<SavedHighlight[]>([]);
+  const [extractedPageLines, setExtractedPageLines] = useState<string[]>([]);
+  const [extractorLoading, setExtractorLoading] = useState<boolean>(false);
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  
+  // Custom Sher composer state for highlight tab
+  const [customSherUrdu, setCustomSherUrdu] = useState<string>("");
+  const [customSherRoman, setCustomSherRoman] = useState<string>("");
+  const [customSherEnglish, setCustomSherEnglish] = useState<string>("");
+  const [customSherExplanation, setCustomSherExplanation] = useState<string>("");
+  const [customSherPoet, setCustomSherPoet] = useState<string>("");
 
   // Audio Player states
   const [audioSrc, setAudioSrc] = useState<string>("");
@@ -307,45 +370,64 @@ export default function BookReader({
     const loadFile = async () => {
       setLoading(true);
       try {
-        if (file.isLocal) {
-          const fileId = file.url.replace("local://", "");
-          
-          const keysToTry = [
-            fileId,
-            file.id,
-            `file_${book.id}_${file.id}`,
-            `file_book_${book.id}_${file.id}`,
-            `file_book_${book.id}_file_${file.id}`,
-            `file_${book.id}_file_${file.id}`,
-            `file_${file.id}`
-          ];
+        const fileId = file.url.replace("local://", "");
+        
+        const keysToTry = [
+          fileId,
+          file.id,
+          `file_${book.id}_${file.id}`,
+          `file_book_${book.id}_${file.id}`,
+          `file_book_${book.id}_file_${file.id}`,
+          `file_${book.id}_file_${file.id}`,
+          `file_${file.id}`
+        ];
 
-          let blob = null;
-          for (const key of keysToTry) {
-            if (!key) continue;
-            try {
-              const result = await getMediaFile(key);
-              if (result) {
-                blob = result;
-                console.log(`Successfully found cached PDF under IndexedDB key: "${key}"`);
-                break;
-              }
-            } catch (err) {
-              console.warn(`Fallback lookup failed for key "${key}":`, err);
+        let blob = null;
+        for (const key of keysToTry) {
+          if (!key) continue;
+          try {
+            const result = await getMediaFile(key);
+            if (result) {
+              blob = result;
+              console.log(`Successfully found cached PDF under IndexedDB key: "${key}"`);
+              break;
             }
+          } catch (err) {
+            console.warn(`Fallback lookup failed for key "${key}":`, err);
           }
+        }
 
-          if (blob) {
-            const blobUrl = URL.createObjectURL(blob);
-            if (active) {
-              setResolvedBlobUrl(blobUrl);
-            }
-          } else {
-            triggerToast("Could not find the local cached document publication. ⚠️");
+        if (blob) {
+          const blobUrl = URL.createObjectURL(blob);
+          if (active) {
+            setResolvedBlobUrl(blobUrl);
             setLoading(false);
           }
-        } else {
+        } else if (file.isLocal) {
+          triggerToast("Could not find the local cached document publication. ⚠️");
           setLoading(false);
+        } else {
+          // It is a remote file and was not found in the cache. Download it and cache it.
+          const remoteUrl = resolveBookUrl(file.url);
+          if (remoteUrl) {
+            console.log(`Downloading and caching remote PDF from: ${remoteUrl}`);
+            const response = await fetch(remoteUrl);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const downloadedBlob = await response.blob();
+            // Save in IndexedDB so it's fully available offline next time
+            const cacheKey = `file_${book.id}_${file.id}`;
+            await saveMediaFile(cacheKey, downloadedBlob);
+            console.log(`Successfully cached remote PDF to IndexedDB under key: "${cacheKey}"`);
+
+            const blobUrl = URL.createObjectURL(downloadedBlob);
+            if (active) {
+              setResolvedBlobUrl(blobUrl);
+              setLoading(false);
+            }
+          } else {
+            setLoading(false);
+          }
         }
       } catch (err: any) {
         console.error("Error loading reader file:", err);
@@ -407,7 +489,7 @@ export default function BookReader({
   useEffect(() => {
     const isPdfFile = file.type.toLowerCase() === "pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdfFile) {
-      const fileUrl = file.isLocal ? resolvedBlobUrl : resolveBookUrl(file.url);
+      const fileUrl = resolvedBlobUrl || resolveBookUrl(file.url);
       if (fileUrl) {
         setIframeSrc(`${fileUrl}#page=${currentPage}`);
       }
@@ -415,7 +497,7 @@ export default function BookReader({
     }
 
     if (!pdfjsLoaded) return;
-    const fileUrl = file.isLocal ? resolvedBlobUrl : resolveBookUrl(file.url);
+    const fileUrl = resolvedBlobUrl || resolveBookUrl(file.url);
     if (!fileUrl) return;
 
     let active = true;
@@ -439,6 +521,7 @@ export default function BookReader({
         console.error("PDFjs document load failed:", err);
         if (active) {
           setPdfLoadingError(err.message || "Failed to parse PDF document structure.");
+          setIframeSrc(`${resolvedBlobUrl || resolveBookUrl(file.url)}#page=${currentPage}`);
           setLoading(false);
         }
       }
@@ -463,19 +546,199 @@ export default function BookReader({
     }
   }, [book.id]);
 
-  // Sync iframe source when page changes (ONLY for non-PDF files)
+  // Load saved highlights for this book
+  useEffect(() => {
+    const savedHlsKey = `zauq_highlights_${book.id}`;
+    const stored = localStorage.getItem(savedHlsKey);
+    if (stored) {
+      try {
+        setHighlights(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse book highlights:", e);
+      }
+    }
+  }, [book.id]);
+
+  // Load extracted lines for the current page when activeTab is "highlight" or currentPage changes
+  useEffect(() => {
+    if (activeTab !== "highlight" || !pdfDoc) return;
+    
+    let active = true;
+    const fetchPageText = async () => {
+      setExtractorLoading(true);
+      setExtractedPageLines([]);
+      setSelectedLines([]);
+      setCustomSherUrdu("");
+      
+      try {
+        const page = await pdfDoc.getPage(currentPage);
+        const textContent = await page.getTextContent();
+        const items = textContent.items as any[];
+        
+        if (!items || items.length === 0) {
+          if (active) {
+            setExtractedPageLines([]);
+            setExtractorLoading(false);
+          }
+          return;
+        }
+
+        // Group items into lines based on y-coordinate tolerance (approx 8px)
+        const tolerance = 8;
+        const linesMap: { y: number; items: any[] }[] = [];
+
+        items.forEach((item) => {
+          if (!item.str || !item.str.trim()) return;
+          const y = item.transform[5];
+          const group = linesMap.find((g) => Math.abs(g.y - y) <= tolerance);
+          if (group) {
+            group.items.push(item);
+          } else {
+            linesMap.push({ y, items: [item] });
+          }
+        });
+
+        // Sort lines from top to bottom (larger y coordinate is higher up in standard PDF space)
+        linesMap.sort((a, b) => b.y - a.y);
+
+        // Sort items left-to-right within each line (smaller x coordinate first)
+        const lines = linesMap.map((line) => {
+          line.items.sort((a, b) => a.transform[4] - b.transform[4]);
+          return line.items.map((it) => it.str).join(" ").replace(/\s+/g, " ").trim();
+        }).filter(line => line.length > 0);
+
+        if (active) {
+          setExtractedPageLines(lines);
+          setCustomSherPoet(book.publisher || book.title || "Classical Poet");
+        }
+      } catch (err) {
+        console.error("Failed to extract page text content:", err);
+      } finally {
+        if (active) {
+          setExtractorLoading(false);
+        }
+      }
+    };
+
+    fetchPageText();
+    return () => {
+      active = false;
+    };
+  }, [currentPage, pdfDoc, activeTab]);
+
+  const handleToggleLineSelection = (line: string) => {
+    let newSelected: string[];
+    if (selectedLines.includes(line)) {
+      newSelected = selectedLines.filter(l => l !== line);
+    } else {
+      newSelected = [...selectedLines, line];
+    }
+    setSelectedLines(newSelected);
+    // Automatically set Urdu script input box, separating multiple selected lines by newline
+    setCustomSherUrdu(newSelected.join("\n"));
+  };
+
+  const handleSaveHighlightAsSher = async () => {
+    if (!customSherUrdu.trim()) {
+      triggerToast("Please select at least one line or write some text. ⚠️");
+      return;
+    }
+
+    const sherId = `sher_${Date.now()}`;
+    const cleanPoet = customSherPoet.trim() || book.publisher || "Classical Poet";
+    
+    // We must comply 100% with firestore.rules validation!
+    // Required fields: id, urdu, roman, english, poet, userId, createdAt
+    const newSher: Sher = {
+      id: sherId,
+      urdu: customSherUrdu.trim(),
+      roman: customSherRoman.trim(), // Send "" if empty to be valid string
+      english: customSherEnglish.trim(), // Send "" if empty to be valid string
+      poet: cleanPoet,
+      explanation: customSherExplanation.trim(), // Optional but validated if exists
+      isUserAdded: true,
+    };
+
+    if (user) {
+      const collectionPath = `users/${user.uid}/saved_shers`;
+      try {
+        await setDoc(doc(db, collectionPath, sherId), {
+          id: newSher.id,
+          urdu: newSher.urdu,
+          roman: newSher.roman,
+          english: newSher.english,
+          poet: newSher.poet,
+          explanation: newSher.explanation || "",
+          isUserAdded: true,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+        
+        triggerToast("Sher successfully added to Mera Deewan! ☁️✨");
+      } catch (err: any) {
+        console.error("Firestore save custom sher error:", err);
+        // Fallback save locally
+        saveSherLocally(newSher);
+      }
+    } else {
+      saveSherLocally(newSher);
+    }
+
+    // Add to local highlights for visual indicator and fast lookups in Book
+    const newHighlight: SavedHighlight = {
+      id: `hl_${Date.now()}`,
+      pageNum: currentPage,
+      text: newSher.urdu,
+      createdAt: new Date().toISOString(),
+      sherId: sherId
+    };
+
+    const updatedHls = [...highlights, newHighlight];
+    setHighlights(updatedHls);
+    localStorage.setItem(`zauq_highlights_${book.id}`, JSON.stringify(updatedHls));
+
+    // Reset selection and inputs
+    setSelectedLines([]);
+    setCustomSherUrdu("");
+    setCustomSherRoman("");
+    setCustomSherEnglish("");
+    setCustomSherExplanation("");
+  };
+
+  const saveSherLocally = (sher: Sher) => {
+    try {
+      const localShersRaw = localStorage.getItem("zauq_saved_shers");
+      const localShers: Sher[] = localShersRaw ? JSON.parse(localShersRaw) : [];
+      const updated = [sher, ...localShers];
+      localStorage.setItem("zauq_saved_shers", JSON.stringify(updated));
+      window.dispatchEvent(new Event("zauq_saved_shers_updated"));
+      triggerToast("Sher successfully saved to local Deewan! 📖✨");
+    } catch (e) {
+      console.error("Local storage save error:", e);
+      triggerToast("Failed to save Sher to local storage.");
+    }
+  };
+
+  const handleRemoveHighlight = (hlId: string) => {
+    const updatedHls = highlights.filter(h => h.id !== hlId);
+    setHighlights(updatedHls);
+    localStorage.setItem(`zauq_highlights_${book.id}`, JSON.stringify(updatedHls));
+    triggerToast("Highlight removed.");
+  };
+
+  // Sync iframe source when page changes (Supports fallback for PDF files when high-fidelity PDF.js rendering fails)
   useEffect(() => {
     const isPdfFile = file.type.toLowerCase() === "pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (isPdfFile) return;
+    if (isPdfFile && pdfDoc) return;
 
-    const fileUrl = file.isLocal ? resolvedBlobUrl : resolveBookUrl(file.url);
+    const fileUrl = resolvedBlobUrl || resolveBookUrl(file.url);
     if (fileUrl) {
       const timer = setTimeout(() => {
         setIframeSrc(`${fileUrl}#page=${currentPage}`);
       }, 400);
       return () => clearTimeout(timer);
     }
-  }, [currentPage, resolvedBlobUrl, file]);
+  }, [currentPage, resolvedBlobUrl, file, pdfDoc]);
 
   // Handle keyboard arrow navigation
   useEffect(() => {
@@ -596,7 +859,7 @@ export default function BookReader({
   };
 
   const handleDownloadOriginal = () => {
-    const fileUrl = file.isLocal ? resolvedBlobUrl : file.url;
+    const fileUrl = resolvedBlobUrl || file.url;
     if (fileUrl) {
       const link = document.createElement("a");
       link.href = fileUrl;
@@ -695,7 +958,7 @@ export default function BookReader({
             </div>
 
             <a
-              href={file.isLocal ? resolvedBlobUrl : file.url}
+              href={resolvedBlobUrl || file.url}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-stone-200 transition-all flex items-center justify-center"
@@ -768,6 +1031,51 @@ export default function BookReader({
                   <div className="w-12 h-12 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
                   <span className="text-xs font-mono text-stone-500 uppercase tracking-widest font-mono">Opening literary document...</span>
                 </div>
+              ) : pdfDoc ? (
+                /* Elegant scrolling canvas-based PDF.js book rendering */
+                <div className="w-full space-y-6 pt-10">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <PDFPageRenderer
+                      key={pageNum}
+                      pdfDoc={pdfDoc}
+                      pageNum={pageNum}
+                      scale={zoomScale}
+                      theme={currentTheme}
+                      pageHighlights={highlights.filter((h) => h.pageNum === pageNum)}
+                      onRemoveHighlight={handleRemoveHighlight}
+                      onPageVisible={(num) => {
+                        if (currentPage !== num && !isProgrammaticScroll.current) {
+                          setCurrentPage(num);
+                          savePageProgress(num, totalPages);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : iframeSrc ? (
+                <div className="w-full h-full relative rounded-2xl overflow-hidden border border-stone-300/10 shadow-lg flex flex-col bg-white">
+                  {pdfLoadingError && (
+                    <div className="bg-amber-950 text-amber-400 border-b border-amber-900/50 px-4 py-2 flex items-center justify-between text-xs select-none">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" />
+                        <span className="font-sans">High-performance PDF engine bypassed ({pdfLoadingError}). Displaying standard fallback viewer instead.</span>
+                      </div>
+                      <button 
+                        onClick={() => setPdfLoadingError(null)}
+                        className="text-[10px] font-mono text-stone-400 hover:text-stone-200 cursor-pointer underline px-2 py-0.5 rounded bg-stone-900 hover:bg-stone-850"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                  {/* Embedded PDF/EPUB via standard iframe fallback */}
+                  <iframe
+                    src={iframeSrc}
+                    className="w-full h-full rounded-2xl flex-1 bg-white min-h-[500px]"
+                    title={book.title}
+                    allow="autoplay"
+                  />
+                </div>
               ) : pdfLoadingError ? (
                 <div className="my-auto flex flex-col items-center justify-center text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
                   <HelpCircle className="w-8 h-8 text-amber-500/40 mx-auto mb-2" />
@@ -781,41 +1089,12 @@ export default function BookReader({
                     onClick={() => {
                       setPdfLoadingError(null);
                       // Fallback to basic iframe
-                      setIframeSrc(`${file.isLocal ? resolvedBlobUrl : resolveBookUrl(file.url)}#page=${currentPage}`);
+                      setIframeSrc(`${resolvedBlobUrl || resolveBookUrl(file.url)}#page=${currentPage}`);
                     }}
                     className="px-4 py-2 bg-amber-500 text-stone-950 text-xs font-mono font-bold rounded-xl hover:bg-amber-400 cursor-pointer font-mono"
                   >
                     Use standard view fallback
                   </button>
-                </div>
-              ) : pdfDoc ? (
-                /* Elegant scrolling canvas-based PDF.js book rendering */
-                <div className="w-full space-y-6 pt-10">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                    <PDFPageRenderer
-                      key={pageNum}
-                      pdfDoc={pdfDoc}
-                      pageNum={pageNum}
-                      scale={zoomScale}
-                      theme={currentTheme}
-                      onPageVisible={(num) => {
-                        if (currentPage !== num && !isProgrammaticScroll.current) {
-                          setCurrentPage(num);
-                          savePageProgress(num, totalPages);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : iframeSrc ? (
-                <div className="w-full h-full relative rounded-2xl overflow-hidden border border-stone-300/10 shadow-lg flex flex-col bg-white">
-                  {/* Embedded PDF/EPUB via standard iframe fallback */}
-                  <iframe
-                    src={iframeSrc}
-                    className="w-full h-full rounded-2xl flex-1 bg-white min-h-[500px]"
-                    title={book.title}
-                    allow="autoplay"
-                  />
                 </div>
               ) : (
                 <div className="my-auto text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
@@ -837,7 +1116,7 @@ export default function BookReader({
                       Active PDF URL / Source Path Diagnostics
                     </span>
                     <span className="text-xs font-mono text-stone-300 block truncate bg-stone-900/80 px-2 py-1 rounded border border-stone-800/80 mt-1 select-all" title="Double click to select URL">
-                      {file.isLocal ? resolvedBlobUrl || "Resolving Local Cached Blob..." : file.url}
+                      {resolvedBlobUrl || file.url}
                     </span>
                   </div>
                 </div>
@@ -845,7 +1124,7 @@ export default function BookReader({
                 <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
                   <button
                     onClick={() => {
-                      const url = file.isLocal ? resolvedBlobUrl : file.url;
+                      const url = resolvedBlobUrl || file.url;
                       navigator.clipboard.writeText(url);
                       triggerToast("PDF source URL copied to clipboard! 📋");
                     }}
@@ -855,7 +1134,7 @@ export default function BookReader({
                     <span>Copy URL</span>
                   </button>
                   <a
-                    href={file.isLocal ? resolvedBlobUrl : file.url}
+                    href={resolvedBlobUrl || file.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-mono text-stone-950 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -911,10 +1190,10 @@ export default function BookReader({
             
             <div>
               {/* Tab Selector */}
-              <div className="grid grid-cols-3 border-b border-stone-800/20 bg-stone-950/35 p-1 mx-4 mt-4 rounded-xl">
+              <div className="grid grid-cols-4 border-b border-stone-800/20 bg-stone-950/35 p-1 mx-4 mt-4 rounded-xl">
                 <button
                   onClick={() => setActiveTab("controls")}
-                  className={`py-2 px-1 text-center rounded-lg text-[10px] font-mono uppercase tracking-wider font-semibold transition-all ${
+                  className={`py-2 px-0.5 text-center rounded-lg text-[9px] sm:text-[10px] font-mono uppercase tracking-tight sm:tracking-wider font-semibold transition-all ${
                     activeTab === "controls" 
                       ? "bg-amber-500 text-stone-950 font-bold" 
                       : "text-stone-400 hover:text-stone-200"
@@ -924,7 +1203,7 @@ export default function BookReader({
                 </button>
                 <button
                   onClick={() => setActiveTab("notes")}
-                  className={`py-2 px-1 text-center rounded-lg text-[10px] font-mono uppercase tracking-wider font-semibold transition-all ${
+                  className={`py-2 px-0.5 text-center rounded-lg text-[9px] sm:text-[10px] font-mono uppercase tracking-tight sm:tracking-wider font-semibold transition-all ${
                     activeTab === "notes" 
                       ? "bg-amber-500 text-stone-950 font-bold" 
                       : "text-stone-400 hover:text-stone-200"
@@ -934,13 +1213,23 @@ export default function BookReader({
                 </button>
                 <button
                   onClick={() => setActiveTab("audio")}
-                  className={`py-2 px-1 text-center rounded-lg text-[10px] font-mono uppercase tracking-wider font-semibold transition-all ${
+                  className={`py-2 px-0.5 text-center rounded-lg text-[9px] sm:text-[10px] font-mono uppercase tracking-tight sm:tracking-wider font-semibold transition-all ${
                     activeTab === "audio" 
                       ? "bg-amber-500 text-stone-950 font-bold" 
                       : "text-stone-400 hover:text-stone-200"
                   }`}
                 >
-                  Audio Recitation
+                  Audio
+                </button>
+                <button
+                  onClick={() => setActiveTab("highlight")}
+                  className={`py-2 px-0.5 text-center rounded-lg text-[9px] sm:text-[10px] font-mono uppercase tracking-tight sm:tracking-wider font-semibold transition-all ${
+                    activeTab === "highlight" 
+                      ? "bg-amber-500 text-stone-950 font-bold" 
+                      : "text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  Highlights ({highlights.length})
                 </button>
               </div>
 
@@ -1268,6 +1557,202 @@ export default function BookReader({
                           </p>
                         </div>
                       )}
+                    </motion.div>
+                  )}
+
+                  {activeTab === "highlight" && (
+                    <motion.div
+                      key="highlight-tab"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="flex flex-col gap-5 text-stone-200"
+                    >
+                      {/* Highlight instructions card */}
+                      <div className={`p-4 rounded-2xl border transition-all ${currentTheme.card} shadow-sm`}>
+                        <h3 className="text-xs font-serif font-bold tracking-tight text-amber-500 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Sher Selector & Deewan Notebook</span>
+                        </h3>
+                        <p className="text-[11px] text-stone-500 font-serif mt-1.5 leading-relaxed">
+                          Extract, highlight, and annotate poetry directly from this manuscript. Saved couplets are added as original entries inside your personal **Deewan Notebook**.
+                        </p>
+                      </div>
+
+                      {/* PDF Text Line Extractor */}
+                      {pdfDoc ? (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between border-b border-stone-800/10 pb-1">
+                            <span className="text-[10px] font-mono uppercase text-stone-500 tracking-wider font-bold">
+                              Extracted Page {currentPage} lines
+                            </span>
+                            {extractorLoading && (
+                              <RefreshCw className="w-3 h-3 text-amber-500 animate-spin" />
+                            )}
+                          </div>
+
+                          {extractorLoading ? (
+                            <div className="py-8 flex flex-col items-center justify-center gap-2">
+                              <div className="w-6 h-6 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+                              <span className="text-[10px] font-mono text-stone-500 uppercase tracking-widest">Parsing Text...</span>
+                            </div>
+                          ) : extractedPageLines.length === 0 ? (
+                            <div className="p-4 bg-stone-950/40 border border-dashed border-stone-850 rounded-2xl text-center">
+                              <HelpCircle className="w-6 h-6 text-stone-500 mx-auto mb-1.5" />
+                              <span className="text-[11px] font-serif text-stone-400">No selectable Urdu text parsed on this page.</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto pr-1">
+                              {extractedPageLines.map((line, idx) => {
+                                const isSelected = selectedLines.includes(line);
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => handleToggleLineSelection(line)}
+                                    className={`w-full text-right p-2.5 rounded-xl border text-xs font-serif leading-relaxed transition-all flex items-center justify-between gap-3 ${
+                                      isSelected 
+                                        ? "bg-amber-500/10 border-amber-500 text-amber-400 font-medium" 
+                                        : "bg-stone-900/40 border-stone-850/60 text-stone-300 hover:bg-stone-900/80 hover:border-stone-800"
+                                    }`}
+                                  >
+                                    <span className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[9px] font-sans font-bold transition-all ${
+                                      isSelected ? "bg-amber-500 border-amber-500 text-stone-950" : "border-stone-700 text-transparent"
+                                    }`}>
+                                      ✓
+                                    </span>
+                                    <span className="flex-1 text-right select-none" dir="rtl">{line}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-stone-900/30 border border-stone-850/60 rounded-2xl">
+                          <span className="text-[10px] font-mono uppercase text-stone-500 tracking-wider font-bold block mb-1.5">
+                            Standard Frame Mode
+                          </span>
+                          <p className="text-[11px] font-serif text-stone-400 leading-relaxed">
+                            Text extraction is only supported for PDF formats. However, you can write or copy-paste any verses manually below to save them directly to your Deewan.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Custom Sher Input / Preview Card */}
+                      <div className="flex flex-col gap-3 bg-stone-950/45 p-4 rounded-2xl border border-stone-800/25">
+                        <span className="text-[10px] font-mono uppercase text-stone-500 tracking-wider font-bold">
+                          Deewan Entry Composer
+                        </span>
+
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block mb-1">Poetry Verse (Urdu Script)</label>
+                            <textarea
+                              value={customSherUrdu}
+                              onChange={(e) => setCustomSherUrdu(e.target.value)}
+                              placeholder="Select lines above or type Urdu script..."
+                              rows={2}
+                              dir="rtl"
+                              className="w-full rounded-xl bg-stone-900/90 border border-stone-800 p-2 text-right font-serif text-xs text-amber-500 placeholder-stone-600 focus:outline-none focus:border-amber-500/40"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block mb-1">Transliteration (Roman Script)</label>
+                            <input
+                              type="text"
+                              value={customSherRoman}
+                              onChange={(e) => setCustomSherRoman(e.target.value)}
+                              placeholder="Roman script transliteration..."
+                              className="w-full rounded-xl bg-stone-900/90 border border-stone-800 p-2 text-xs font-serif text-stone-300 placeholder-stone-600 focus:outline-none focus:border-amber-500/40"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block mb-1">English Translation</label>
+                            <input
+                              type="text"
+                              value={customSherEnglish}
+                              onChange={(e) => setCustomSherEnglish(e.target.value)}
+                              placeholder="English meaning translation..."
+                              className="w-full rounded-xl bg-stone-900/90 border border-stone-800 p-2 text-xs font-serif text-stone-300 placeholder-stone-600 focus:outline-none focus:border-amber-500/40"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block mb-1">Poet Name</label>
+                              <input
+                                type="text"
+                                value={customSherPoet}
+                                onChange={(e) => setCustomSherPoet(e.target.value)}
+                                placeholder="Poet name..."
+                                className="w-full rounded-xl bg-stone-900/90 border border-stone-800 p-2 text-xs font-serif text-stone-300 placeholder-stone-600 focus:outline-none focus:border-amber-500/40"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-mono text-stone-500 uppercase tracking-widest block mb-1">Tashreeh / Explanation</label>
+                              <input
+                                type="text"
+                                value={customSherExplanation}
+                                onChange={(e) => setCustomSherExplanation(e.target.value)}
+                                placeholder="Optional notes/commentary..."
+                                className="w-full rounded-xl bg-stone-900/90 border border-stone-800 p-2 text-xs font-serif text-stone-300 placeholder-stone-600 focus:outline-none focus:border-amber-500/40"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={handleSaveHighlightAsSher}
+                            className="w-full py-2.5 bg-amber-500 text-stone-950 font-bold text-xs rounded-xl hover:bg-amber-400 transition-all flex items-center justify-center gap-1.5 shadow cursor-pointer font-mono uppercase tracking-widest"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Save to Deewan Notebook</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Saved book annotations list */}
+                      <div className="flex flex-col gap-3">
+                        <span className="text-[10px] font-mono uppercase text-stone-500 tracking-wider font-bold">
+                          Saved Book Highlights ({highlights.length})
+                        </span>
+
+                        {highlights.length === 0 ? (
+                          <div className="p-4 bg-stone-950/20 border border-stone-850/60 rounded-2xl text-center">
+                            <p className="text-xs font-serif text-stone-500">No highlights recorded in this book yet.</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2.5 max-h-[220px] overflow-y-auto pr-1">
+                            {highlights.map((hl) => (
+                              <div
+                                key={hl.id}
+                                className="p-3 bg-stone-900/50 border border-stone-850/60 rounded-2xl hover:border-stone-800 transition-all relative flex flex-col gap-1.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <button
+                                    onClick={() => handleScrollToPage(hl.pageNum)}
+                                    className="text-[10px] font-mono font-bold text-amber-500 hover:text-amber-400 underline"
+                                    title="Click to jump to this page"
+                                  >
+                                    Page {hl.pageNum}
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveHighlight(hl.id)}
+                                    className="text-stone-500 hover:text-rose-400 p-0.5 rounded transition-all"
+                                    title="Delete annotation"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <p className="text-xs font-serif text-stone-300 leading-relaxed text-right whitespace-pre-line pr-1" dir="rtl">
+                                  {hl.text}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>

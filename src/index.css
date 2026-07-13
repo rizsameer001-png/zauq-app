@@ -58,27 +58,27 @@
 }
 
 .theme-parchment {
-  /* Ghalib's Parchment & Terracotta (Classic Warm Light Theme) */
-  --color-stone-950: #faf7ed; /* Beautiful hand-laid aged paper background */
-  --color-stone-900: #f1ebd7; /* Slightly darker parchment surfaces */
-  --color-stone-850: #e6dec5;
-  --color-stone-800: #dad1b3; /* Rich sand borders */
-  --color-stone-700: #c6bca1;
-  --color-stone-600: #a89d81;
-  --color-stone-500: #807354;
-  --color-stone-400: #594e33; /* Readable dark brown text */
-  --color-stone-300: #3b321a; /* Even darker espresso */
-  --color-stone-200: #241d0b; /* Primary dark brown */
-  --color-stone-100: #120e03; /* Pure ink espresso */
+  /* Premium Crisp Alabaster & Royal Gold (Clean Modern Light Theme) */
+  --color-stone-950: #f9fafb; /* Pristine modern off-white/light gray canvas background */
+  --color-stone-900: #ffffff; /* Sharp, floating pure white card surfaces */
+  --color-stone-850: #f4f4f5; /* Delicate gray for sub-sections and inputs */
+  --color-stone-800: #e4e4e7; /* Fine-line clean light border */
+  --color-stone-700: #d4d4d8; /* Distinct element borders */
+  --color-stone-600: #a1a1aa; /* Secondary lines or subtle elements */
+  --color-stone-500: #71717a; /* Highly legible elegant gray description text */
+  --color-stone-400: #52525b; /* High-contrast body copy */
+  --color-stone-300: #27272a; /* Extremely rich body/subheadings */
+  --color-stone-200: #18181b; /* Pitch ink for premium titles & couplets */
+  --color-stone-100: #09090b; /* Deepest black carbon accents */
   
-  --color-amber-500: #9a3412; /* Rich burnt terracotta-red */
-  --color-amber-400: #c2410c;
-  --color-amber-300: #ea580c;
-  --color-amber-200: #f97316;
-  --color-amber-100: #ffedd5;
+  --color-amber-500: #b45309; /* Premium royal gold/amber */
+  --color-amber-400: #d97706;
+  --color-amber-300: #f59e0b;
+  --color-amber-200: #fbbf24;
+  --color-amber-100: #fef3c7;
   
-  --theme-scrollbar-thumb: rgba(154, 52, 18, 0.2);
-  --theme-scrollbar-hover: rgba(154, 52, 18, 0.4);
+  --theme-scrollbar-thumb: rgba(180, 83, 9, 0.15);
+  --theme-scrollbar-hover: rgba(180, 83, 9, 0.3);
 }
 
 .theme-emerald-court {
@@ -103,6 +103,78 @@
   
   --theme-scrollbar-thumb: rgba(52, 211, 153, 0.2);
   --theme-scrollbar-hover: rgba(52, 211, 153, 0.4);
+}
+
+.theme-imperial-gold {
+  /* Rich Imperial Gold & Warm Charcoal */
+  --color-stone-950: #0d0b09; /* Warm luxury obsidian */
+  --color-stone-900: #1a1510; /* Rich warm soil surfaces */
+  --color-stone-850: #292018; /* Elegant bronze-tint border */
+  --color-stone-800: #352a1f; 
+  --color-stone-700: #544332;
+  --color-stone-600: #755e46;
+  --color-stone-500: #9c7d5c;
+  --color-stone-400: #c2a380;
+  --color-stone-300: #e0cca8;
+  --color-stone-200: #f4ecdc;
+  --color-stone-100: #faf7f0;
+  
+  --color-amber-500: #d97706; /* High-contrast royal gold */
+  --color-amber-400: #fbbf24;
+  --color-amber-300: #fcd34d;
+  --color-amber-200: #fde68a;
+  --color-amber-100: #fef3c7;
+  
+  --theme-scrollbar-thumb: rgba(217, 119, 6, 0.25);
+  --theme-scrollbar-hover: rgba(217, 119, 6, 0.5);
+}
+
+.theme-rosewood {
+  /* Deep Rosewood Red & Platinum-Rose */
+  --color-stone-950: #140507; /* Luxurious mahogany black-cherry */
+  --color-stone-900: #1f0a0c;
+  --color-stone-850: #2c1215;
+  --color-stone-800: #3b191d;
+  --color-stone-700: #59252c;
+  --color-stone-600: #7a353f;
+  --color-stone-500: #a14c59;
+  --color-stone-400: #cc7a87;
+  --color-stone-300: #e6b3bc;
+  --color-stone-200: #f5e1e4;
+  --color-stone-100: #faf2f3;
+  
+  --color-amber-500: #e11d48; /* Crimson-rose */
+  --color-amber-400: #f43f5e;
+  --color-amber-300: #fb7185;
+  --color-amber-200: #fecdd3;
+  --color-amber-100: #ffe4e6;
+  
+  --theme-scrollbar-thumb: rgba(225, 29, 72, 0.25);
+  --theme-scrollbar-hover: rgba(225, 29, 72, 0.5);
+}
+
+.theme-ivory {
+  /* Royal Mughal Ivory & Charcoal Gold */
+  --color-stone-950: #fcfbf7; /* Rich, glowing ivory cream background */
+  --color-stone-900: #f5f3e9; /* Soft parchment surfaces */
+  --color-stone-850: #eae6d3; /* Warm shadow borders */
+  --color-stone-800: #ddd8be;
+  --color-stone-700: #c2baa0;
+  --color-stone-600: #a1987d;
+  --color-stone-500: #7a7156;
+  --color-stone-400: #4a4332; /* Readable, high-contrast dark text */
+  --color-stone-300: #2c271c; /* Deep espresso font */
+  --color-stone-200: #1c1912; /* Rich ink title */
+  --color-stone-100: #0c0a07; /* Pure carbon */
+  
+  --color-amber-500: #b45309; /* Deep honey-amber */
+  --color-amber-400: #d97706;
+  --color-amber-300: #f59e0b;
+  --color-amber-200: #fbbf24;
+  --color-amber-100: #fef3c7;
+  
+  --theme-scrollbar-thumb: rgba(180, 83, 9, 0.3);
+  --theme-scrollbar-hover: rgba(180, 83, 9, 0.6);
 }
 
 /* Scrollbar customizations */

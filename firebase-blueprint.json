@@ -328,9 +328,84 @@
         }
       },
       "required": ["id", "bookId", "userId", "userName", "text", "createdAt", "updatedAt"]
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Global layout, typography, banner and branding configuration set by the admin",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        },
+        "font": {
+          "type": "string"
+        },
+        "logoText": {
+          "type": "string"
+        },
+        "logoUrl": {
+          "type": "string"
+        },
+        "logoSubtitle": {
+          "type": "string"
+        },
+        "bannerHeading": {
+          "type": "string"
+        },
+        "bannerTagline": {
+          "type": "string"
+        },
+        "bannerImageUrl": {
+          "type": "string"
+        },
+        "bannerLink": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id"]
+    },
+    "CMSPage": {
+      "title": "CMSPage",
+      "description": "Custom content management pages such as about-us and privacy-policy",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique slug for the page (e.g., 'about-us' or 'privacy-policy')"
+        },
+        "title": {
+          "type": "string",
+          "description": "The user-facing title of the page"
+        },
+        "content": {
+          "type": "string",
+          "description": "The markdown or rich-text content of the page"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the page was last updated"
+        }
+      },
+      "required": ["id", "title", "content", "updatedAt"]
     }
   },
   "firestore": {
+    "cms_pages/{pageId}": {
+      "schema": "CMSPage",
+      "description": "Content management pages created or updated by the administrator"
+    },
+    "settings/{settingId}": {
+      "schema": "GlobalSettings",
+      "description": "App personalization and brand settings set by administrator"
+    },
     "books/{bookId}/reviews/{reviewId}": {
       "schema": "BookReview",
       "description": "Collection of reviews posted by users on classical books"

@@ -35,7 +35,7 @@ import { Author, Book, BookProgress, BookReview } from "../types";
 import { BookReviews } from "./BookReviews";
 import PoetTimeline from "./PoetTimeline";
 import BookReader from "./BookReader";
-import { getMediaFile } from "../mediaDb";
+import { getMediaFile, getAllCachedKeys } from "../mediaDb";
 import { db, handleFirestoreError, OperationType, resolveBookUrl } from "../firebase";
 import { collection, doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { User as FirebaseUser } from "firebase/auth";
@@ -451,7 +451,8 @@ const BookDetailModal = ({
   user,
   bookProgress,
   onUpdateProgress,
-  autoResumeReader
+  autoResumeReader,
+  onReaderClose
 }: { 
   book: Book; 
   author: Author; 
@@ -462,6 +463,7 @@ const BookDetailModal = ({
   bookProgress?: BookProgress;
   onUpdateProgress: (readPercent: number, listenPercent: number, currentPage?: number, totalPages?: number) => void;
   autoResumeReader?: boolean;
+  onReaderClose?: () => void;
 }) => {
   const [copied, setCopied] = useState(false);
   const [localReadProgress, setLocalReadProgress] = useState(bookProgress?.readProgress || 0);
@@ -998,7 +1000,10 @@ const BookDetailModal = ({
             progress={bookProgress}
             user={user}
             onUpdateProgress={onUpdateProgress}
-            onClose={() => setActiveReaderFile(null)}
+            onClose={() => {
+              setActiveReaderFile(null);
+              onReaderClose?.();
+            }}
             triggerToast={triggerToast}
           />
         )}
@@ -1030,6 +1035,37 @@ export default function LibraryView({
   const [selectedBookForModal, setSelectedBookForModal] = useState<Book | null>(null);
   const [autoResumeForModal, setAutoResumeForModal] = useState(false);
   const [progressMap, setProgressMap] = useState<Record<string, BookProgress>>({});
+  const [cachedKeys, setCachedKeys] = useState<string[]>([]);
+
+  const refreshCacheKeys = async () => {
+    try {
+      const keys = await getAllCachedKeys();
+      setCachedKeys(keys);
+    } catch (e) {
+      console.error("Failed to query cache keys:", e);
+    }
+  };
+
+  useEffect(() => {
+    refreshCacheKeys();
+  }, [books]);
+
+  const isBookCached = (b: Book) => {
+    if (!b.files || b.files.length === 0) return false;
+    return b.files.some(file => {
+      const fileId = file.url?.replace("local://", "") || "";
+      const possibleKeys = [
+        fileId,
+        file.id,
+        `file_${b.id}_${file.id}`,
+        `file_book_${b.id}_${file.id}`,
+        `file_book_${b.id}_file_${file.id}`,
+        `file_${b.id}_file_${file.id}`,
+        `file_${file.id}`
+      ];
+      return possibleKeys.some(k => k && cachedKeys.includes(k));
+    });
+  };
   
   const [viewMode, setViewMode] = useState<"authors" | "books" | "timeline">("authors");
   const [selectedFilterAuthorId, setSelectedFilterAuthorId] = useState<string>("all");
@@ -1778,6 +1814,12 @@ export default function LibraryView({
                                     <span>{book.averageRating} ({book.reviewsCount || 0})</span>
                                   </div>
                                 )}
+                                {isBookCached(book) && (
+                                  <div className="flex items-center gap-0.5 bg-emerald-500/5 px-1.5 py-0.5 rounded border border-emerald-500/15 text-emerald-450 text-[9px] font-mono mt-0.5 font-bold">
+                                    <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                    <span>Offline Ready</span>
+                                  </div>
+                                )}
                               </div>
                               <p className="text-xs text-stone-400 font-serif mt-2 leading-relaxed line-clamp-3">
                                 {book.description || "Classic anthology compiling the elegant verses of this author."}
@@ -2202,6 +2244,7 @@ export default function LibraryView({
             bookProgress={progressMap[selectedBookForModal.id]}
             onUpdateProgress={(readPct, listenPct, currentPage, totalPages) => handleUpdateProgress(selectedBookForModal.id, readPct, listenPct, currentPage, totalPages)}
             autoResumeReader={autoResumeForModal}
+            onReaderClose={refreshCacheKeys}
           />
         )}
       </AnimatePresence>

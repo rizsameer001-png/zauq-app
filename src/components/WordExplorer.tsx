@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Compass, Book, Quote, Sparkles, HelpCircle, Heart, Share2, ArrowRight, Volume2, VolumeX } from "lucide-react";
+import { Search, Compass, Book, Quote, Sparkles, HelpCircle, Heart, Share2, ArrowRight, Volume2, VolumeX, AlertCircle } from "lucide-react";
 import { DICTIONARY_WORDS } from "../data";
 import { WordLookupResult, Sher } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -8,14 +8,24 @@ interface WordExplorerProps {
   onSaveSher: (sher: Sher) => void;
   onEditInCardCreator: (sher: Sher) => void;
   savedSherIds: string[];
+  initialWord?: any;
+  onClearInitialWord?: () => void;
 }
 
-export default function WordExplorer({ onSaveSher, onEditInCardCreator, savedSherIds }: WordExplorerProps) {
+export default function WordExplorer({ onSaveSher, onEditInCardCreator, savedSherIds, initialWord, onClearInitialWord }: WordExplorerProps) {
   const [searchWord, setSearchWord] = useState("");
   const [selectedWord, setSelectedWord] = useState<WordLookupResult | typeof DICTIONARY_WORDS[0]>(DICTIONARY_WORDS[0]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Focus the word if passed via prop
+  React.useEffect(() => {
+    if (initialWord) {
+      setSelectedWord(initialWord);
+      if (onClearInitialWord) onClearInitialWord();
+    }
+  }, [initialWord, onClearInitialWord]);
 
   // Stop speaking if word changes or component unmounts
   React.useEffect(() => {
@@ -243,14 +253,74 @@ export default function WordExplorer({ onSaveSher, onEditInCardCreator, savedShe
               </p>
             </motion.div>
           ) : errorMsg ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex-1 flex flex-col items-center justify-center bg-stone-900/10 border border-rose-950/40 text-rose-300 rounded-3xl p-8 text-center"
-            >
-              <HelpCircle className="w-10 h-10 text-rose-500/60 mb-2" />
-              <p className="text-xs max-w-sm leading-relaxed mb-4">{errorMsg}</p>
-            </motion.div>
+            (() => {
+              const isPermissionDenied = errorMsg.toLowerCase().includes("denied access") || 
+                                         errorMsg.toLowerCase().includes("permission_denied") || 
+                                         errorMsg.toLowerCase().includes("403") ||
+                                         errorMsg.toLowerCase().includes("forbidden");
+              if (isPermissionDenied) {
+                return (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex-1 flex flex-col justify-center bg-stone-900/90 border border-amber-500/20 rounded-3xl p-6 text-left shadow-2xl relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex-shrink-0">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-2">
+                        <h4 className="text-sm font-sans font-bold text-stone-100 uppercase tracking-wide">
+                          Gemini API Key Denied Access
+                        </h4>
+                        <p className="text-xs text-stone-300 leading-relaxed font-serif">
+                          Your current Google AI Studio API key or GCP project is restricted from calling Gemini APIs. This occurs when using a restricted Google Workspace domain, or if your project lacks active access.
+                        </p>
+                        
+                        <div className="mt-2 bg-stone-950/60 p-4 rounded-2xl border border-stone-850/80 flex flex-col gap-2">
+                          <h5 className="text-[10px] font-mono uppercase tracking-widest text-amber-500 font-semibold">How to Resolve This:</h5>
+                          <ul className="list-decimal list-inside text-[11px] text-stone-400 font-sans space-y-2 leading-relaxed">
+                            <li>
+                              <strong className="text-stone-300">Set a personal API Key:</strong> Get a free API Key from <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="text-amber-500 hover:underline">Google AI Studio</a> using a personal <span className="italic">@gmail.com</span> account.
+                            </li>
+                            <li>
+                              <strong className="text-stone-300">Add Key as a Secret:</strong> Open the <strong className="text-stone-300">Settings (Gear Icon ⚙️)</strong> in top-right, go to <strong className="text-stone-300">Secrets</strong>, and add/update your <code className="bg-stone-900 px-1 py-0.5 rounded text-amber-400 border border-stone-800 text-[10px]">GEMINI_API_KEY</code>.
+                            </li>
+                            <li>
+                              <strong className="text-stone-300">Enable Billing / Workspace Access:</strong> If Workspace-owned, make sure your admin allows generative AI access, or add a billing account to upgrade.
+                            </li>
+                          </ul>
+                        </div>
+                        
+                        <div className="mt-2 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setErrorMsg(null);
+                              setSelectedWord(DICTIONARY_WORDS[0]);
+                            }}
+                            className="px-4 py-2 bg-stone-800 hover:bg-stone-750 text-xs text-stone-300 hover:text-white rounded-xl border border-stone-700 transition-all cursor-pointer font-sans"
+                          >
+                            Dismiss & Curate Word
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              }
+              return (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex-1 flex flex-col items-center justify-center bg-stone-900/10 border border-rose-950/40 text-rose-300 rounded-3xl p-8 text-center"
+                >
+                  <HelpCircle className="w-10 h-10 text-rose-500/60 mb-2" />
+                  <p className="text-xs max-w-sm leading-relaxed mb-4">{errorMsg}</p>
+                </motion.div>
+              );
+            })()
           ) : selectedWord ? (
             <motion.div
               initial={{ opacity: 0, y: 15 }}

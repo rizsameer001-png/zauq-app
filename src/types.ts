@@ -154,4 +154,11 @@ export interface BookReview {
   updatedAt: any;
 }
 
+export interface CMSPage {
+  id: string;
+  title: string;
+  content: string;
+  updatedAt: any;
+}
+
 

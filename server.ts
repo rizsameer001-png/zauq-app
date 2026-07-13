@@ -21,8 +21,17 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Serve uploaded files statically
-app.use("/uploads", express.static(UPLOADS_DIR));
+// Serve uploaded files statically with CORS headers enabled to support canvas/PDF.js and fetches
+app.use("/uploads", (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+}, express.static(UPLOADS_DIR));
 
 // Configure multer storage
 const storageEngine = multer.diskStorage({
@@ -39,7 +48,7 @@ const upload = multer({ storage: storageEngine });
 
 // Lazy-loaded GoogleGenAI client helper
 let aiClient: GoogleGenAI | null = null;
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.5-flash";
 
 function getAIClient(): GoogleGenAI {
   if (!aiClient) {

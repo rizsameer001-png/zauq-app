@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sliders, Sparkles, Copy, Palette, Eye, AlignCenter, Type as TypeIcon, Heart, Download, Check, FileText, X, AlertCircle } from "lucide-react";
 import { Sher, CustomCardConfig } from "../types";
 import { motion } from "motion/react";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 
 interface CardCreatorProps {
@@ -108,17 +108,11 @@ export default function CardCreator({ initialSher, onSaveComposition, savedSherI
       
       await new Promise((resolve) => setTimeout(resolve, 300));
       
-      const canvas = await html2canvas(previewRef.current, {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: null,
-        scale: 2,
-        logging: true,
-        windowWidth: 1200,
-        windowHeight: 840,
+      const dataUrl = await toPng(previewRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
       });
       
-      const dataUrl = canvas.toDataURL("image/png");
       if (!dataUrl || dataUrl === "data:,") {
         throw new Error("Failed to generate a valid PNG image blob from the canvas.");
       }
@@ -159,17 +153,11 @@ export default function CardCreator({ initialSher, onSaveComposition, savedSherI
       
       await new Promise((resolve) => setTimeout(resolve, 300));
       
-      const canvas = await html2canvas(previewRef.current, {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: null,
-        scale: 2,
-        logging: true,
-        windowWidth: 1200,
-        windowHeight: 840,
+      const imgData = await toPng(previewRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
       });
       
-      const imgData = canvas.toDataURL("image/png");
       if (!imgData || imgData === "data:,") {
         throw new Error("Failed to generate valid image data for PDF compilation.");
       }
@@ -184,9 +172,14 @@ export default function CardCreator({ initialSher, onSaveComposition, savedSherI
       const pageWidth = pdf.internal.pageSize.getWidth(); // 297mm
       const pageHeight = pdf.internal.pageSize.getHeight(); // 210mm
       
+      const el = previewRef.current;
+      const width = el.clientWidth;
+      const height = el.clientHeight;
+      const aspectRatio = height / width;
+      
       // Calculate optimized sizing keeping the card's aspect ratio centered on A4 page
       const cardWidth = pageWidth - 40; // 20mm padding left & right
-      const cardHeight = cardWidth * (canvas.height / canvas.width);
+      const cardHeight = cardWidth * aspectRatio;
       
       const x = 20;
       const y = (pageHeight - cardHeight) / 2; // Perfectly centered vertically
@@ -220,7 +213,7 @@ export default function CardCreator({ initialSher, onSaveComposition, savedSherI
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8" id="zauq-card-creator">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 card-creator-component" id="zauq-card-creator">
       {/* Configuration Control Panel (Left) */}
       <div className="xl:col-span-5 flex flex-col gap-6">
         {/* Editor Settings Card */}
@@ -363,25 +356,45 @@ export default function CardCreator({ initialSher, onSaveComposition, savedSherI
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2.5 pt-4 border-t border-stone-800/60">
-            <button
-              onClick={handleCopyText}
-              className="flex-1 py-2.5 rounded-xl bg-stone-950 border border-stone-800 hover:border-stone-700 text-stone-400 hover:text-stone-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? "Copied!" : "Copy Card Text"}</span>
-            </button>
+          <div className="flex flex-col gap-2.5 pt-4 border-t border-stone-800/60">
+            <div className="flex gap-2.5">
+              <button
+                onClick={handleCopyText}
+                className="flex-1 py-2.5 rounded-xl bg-stone-950 border border-stone-800 hover:border-stone-700 text-stone-400 hover:text-stone-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? "Copied!" : "Copy Text"}</span>
+              </button>
+
+              <button
+                onClick={handleSaveToDiary}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border cursor-pointer ${
+                  isSaved
+                    ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                    : "bg-amber-500/5 hover:bg-amber-500 border-amber-500/20 hover:border-transparent text-amber-400 hover:text-amber-950 shadow-md"
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${isSaved ? "fill-amber-400 text-amber-400" : ""}`} />
+                <span>{isSaved ? "Saved" : "Save Deewan"}</span>
+              </button>
+            </div>
 
             <button
-              onClick={handleSaveToDiary}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border ${
-                isSaved
-                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-                  : "bg-amber-500/5 hover:bg-amber-500 border-amber-500/20 hover:border-transparent text-amber-400 hover:text-amber-950 shadow-md"
-              }`}
+              onClick={handleExportPNG}
+              disabled={isExporting}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-amber-500/10 cursor-pointer disabled:opacity-50"
             >
-              <Heart className={`w-3.5 h-3.5 ${isSaved ? "fill-amber-400 text-amber-400" : ""}`} />
-              <span>{isSaved ? "Saved to Deewan" : "Save Composition"}</span>
+              {isExporting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-stone-950 border-t-transparent rounded-full animate-spin" />
+                  <span>Generating PNG Card...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Download PNG Card</span>
+                </>
+              )}
             </button>
           </div>
         </div>
