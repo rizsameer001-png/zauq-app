@@ -175,6 +175,12 @@ export function resolveBookUrl(url: string): string {
   if (!url) return "";
   if (url.startsWith("local://")) return url;
   
+  // Convert absolute upload paths to relative paths so they work on any domain
+  const match = url.indexOf("/uploads/");
+  if (match !== -1) {
+    return url.substring(match);
+  }
+  
   // If the URL contains localhost:3000 or 127.0.0.1:3000 but we are on a real domain,
   // rewrite it to use the current browser's origin.
   try {

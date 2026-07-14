@@ -34,6 +34,7 @@ import { Ghazal, Sher, ZauqVideo, Author, Book, CMSPage } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { db, handleFirestoreError, OperationType, uploadToStorage, uploadToStorageWithProgress, sanitizeForFirestore } from "../firebase";
 import { generatePdfThumbnail } from "../utils/pdfThumbnail";
+import { makeUrlRelative } from "../utils/url";
 import { doc, setDoc, deleteDoc, collection, serverTimestamp, updateDoc, getDoc, getDocs } from "firebase/firestore";
 import { saveVideoFile, deleteVideoFile, getVideoFile } from "../videoDb";
 import { saveMediaFile, deleteMediaFile, getMediaFile } from "../mediaDb";
@@ -104,10 +105,10 @@ export default function AdminPanel({
           setActiveFont(data.font || "serif");
           setLogoText(data.logoText || "ZAUQ");
           setLogoSubtitle(data.logoSubtitle || "Urdu Literary Lounge");
-          setLogoUrl(data.logoUrl || "");
+          setLogoUrl(makeUrlRelative(data.logoUrl || ""));
           setBannerHeading(data.bannerHeading || "Zauq Urdu Literary Lounge");
           setBannerTagline(data.bannerTagline || "");
-          setBannerImageUrl(data.bannerImageUrl || "");
+          setBannerImageUrl(makeUrlRelative(data.bannerImageUrl || ""));
           setBannerLink(data.bannerLink || "deewan");
         }
       } catch (err) {
@@ -127,10 +128,10 @@ export default function AdminPanel({
         font: activeFont,
         logoText,
         logoSubtitle,
-        logoUrl,
+        logoUrl: makeUrlRelative(logoUrl),
         bannerHeading,
         bannerTagline,
-        bannerImageUrl,
+        bannerImageUrl: makeUrlRelative(bannerImageUrl),
         bannerLink,
         updatedAt: new Date().toISOString()
       }, { merge: true });

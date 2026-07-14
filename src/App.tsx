@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText } from "lucide-react";
 import DeewanView from "./components/DeewanView";
+import { makeUrlRelative } from "./utils/url";
 import BeitBaziView from "./components/BeitBaziView";
 import UstaadView from "./components/UstaadView";
 import WordExplorer from "./components/WordExplorer";
@@ -22,10 +23,11 @@ import { auth, db, googleProvider, OperationType, handleFirestoreError, testConn
 import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, getDocs } from "firebase/firestore";
 
-const ZauqLogo = () => (
+const ZauqLogo = ({ className = "w-8.5 h-8.5" }: { className?: string }) => (
   <svg
     viewBox="0 0 100 100"
-    className="w-8.5 h-8.5 text-amber-500 fill-current drop-shadow-[0_0_8px_rgba(217,119,6,0.35)] transition-all duration-300 hover:scale-105"
+    preserveAspectRatio="xMidYMid meet"
+    className={`text-amber-500 fill-current drop-shadow-[0_0_8px_rgba(217,119,6,0.35)] transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105 aspect-square flex-shrink-0 ${className}`}
     id="zauq-header-svg-logo"
   >
     {/* Royal Mughal Arch Frame */}
@@ -101,10 +103,10 @@ export default function App() {
         if (data.font) setGlobalFont(data.font);
         if (data.logoText) setGlobalLogoText(data.logoText);
         if (data.logoSubtitle) setGlobalLogoSubtitle(data.logoSubtitle);
-        setGlobalLogoUrl(data.logoUrl || "");
+        setGlobalLogoUrl(makeUrlRelative(data.logoUrl || ""));
         if (data.bannerHeading) setGlobalBannerHeading(data.bannerHeading);
         setGlobalBannerTagline(data.bannerTagline || "");
-        setGlobalBannerImageUrl(data.bannerImageUrl || "");
+        setGlobalBannerImageUrl(makeUrlRelative(data.bannerImageUrl || ""));
         if (data.bannerLink) setGlobalBannerLink(data.bannerLink);
       }
     }, (err) => {
@@ -868,21 +870,21 @@ For any inquiries regarding your data or to request account deletion, please con
             setActiveTab("deewan");
             setSelectedSherForCard(null);
           }}
-          className="flex items-center gap-2.5 cursor-pointer select-none group"
+          className="flex items-center gap-2.5 cursor-pointer select-none group flex-shrink-0"
           id="zauq-branding-logo"
         >
           {globalLogoUrl ? (
             <img 
               src={globalLogoUrl} 
               alt="Brand Logo" 
-              className="w-8.5 h-8.5 object-contain rounded-lg border border-amber-500/20 shadow-sm" 
+              className="w-8.5 h-8.5 object-contain flex-shrink-0 aspect-square rounded-lg border border-amber-500/20 shadow-sm transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
               referrerPolicy="no-referrer"
             />
           ) : (
-            <ZauqLogo />
+            <ZauqLogo className="w-8.5 h-8.5" />
           )}
-          <div className="flex flex-col">
-            <div className="flex items-baseline gap-1.5">
+          <div className="flex flex-col justify-center">
+            <div className="flex items-center gap-1.5">
               <span className="font-display text-base md:text-lg font-bold text-amber-500 tracking-widest leading-none group-hover:text-amber-400 transition-colors uppercase">
                 {globalLogoText || "ZAUQ"}
               </span>
@@ -1192,21 +1194,21 @@ For any inquiries regarding your data or to request account deletion, please con
               className="fixed inset-y-0 right-0 z-50 w-full max-w-xs bg-stone-950 border-l border-stone-900 shadow-2xl p-5 flex flex-col gap-5"
             >
               <div className="flex items-center justify-between border-b border-stone-900 pb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 group cursor-pointer flex-shrink-0">
                   {globalLogoUrl ? (
                     <img 
                       src={globalLogoUrl} 
                       alt="Brand Logo" 
-                      className="w-7 h-7 object-contain rounded-md border border-amber-500/20" 
+                      className="w-7 h-7 object-contain flex-shrink-0 aspect-square rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <ZauqLogo />
+                    <ZauqLogo className="w-7 h-7" />
                   )}
-                  <span className="font-display text-base font-bold text-amber-500 tracking-wider uppercase">
+                  <span className="font-display text-base font-bold text-amber-500 tracking-wider uppercase leading-none">
                     {globalLogoText || "ZAUQ"}
                   </span>
-                  <span className="font-urdu text-base font-bold text-amber-400">ذوق</span>
+                  <span className="font-urdu text-base font-bold text-amber-400 leading-none">ذوق</span>
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -1565,16 +1567,16 @@ For any inquiries regarding your data or to request account deletion, please con
           <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 px-4 text-xs">
             {/* Column 1: App Info */}
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 group cursor-pointer">
                 {globalLogoUrl ? (
                   <img 
                     src={globalLogoUrl} 
                     alt="Brand Logo" 
-                    className="w-7 h-7 object-contain rounded-md border border-amber-500/20" 
+                    className="w-7 h-7 object-contain rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <ZauqLogo />
+                  <ZauqLogo className="w-7 h-7" />
                 )}
                 <span className="font-display text-sm font-semibold text-amber-500 tracking-widest uppercase">
                   {globalLogoText || "ZAUQ"}
@@ -1673,7 +1675,7 @@ For any inquiries regarding your data or to request account deletion, please con
             <p>© 2026 Zauq App. All rights reserved.</p>
             <p className="flex items-center gap-1">
               <span>Powered by</span>
-              <strong className="text-stone-400">AI</strong>
+              <strong className="text-stone-400">Gemini 3.5 Flash</strong>
             </p>
           </div>
         </footer>

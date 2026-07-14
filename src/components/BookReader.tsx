@@ -28,9 +28,11 @@ interface PDFPageRendererProps {
   onPageVisible: (pageNum: number) => void;
   pageHighlights?: SavedHighlight[];
   onRemoveHighlight?: (id: string) => void;
+  immediate?: boolean;
+  isDoubled?: boolean;
 }
 
-function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHighlights = [], onRemoveHighlight }: PDFPageRendererProps) {
+function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHighlights = [], onRemoveHighlight, immediate = false, isDoubled = false }: PDFPageRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isRendered, setIsRendered] = useState(false);
@@ -40,6 +42,14 @@ function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHig
   const hasHighlight = pageHighlights.length > 0;
 
   useEffect(() => {
+    cleanupRender();
+    
+    if (immediate) {
+      onPageVisible(pageNum);
+      triggerRender();
+      return;
+    }
+
     if (!containerRef.current) return;
 
     const observer = new IntersectionObserver(
@@ -64,7 +74,7 @@ function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHig
       observer.disconnect();
       cleanupRender();
     };
-  }, [pdfDoc, pageNum, scale]);
+  }, [pdfDoc, pageNum, scale, immediate]);
 
   const cleanupRender = () => {
     if (renderTaskRef.current) {
@@ -125,10 +135,12 @@ function PDFPageRenderer({ pdfDoc, pageNum, scale, theme, onPageVisible, pageHig
     <div 
       ref={containerRef}
       id={`pdf-page-${pageNum}`}
-      className={`relative w-full max-w-4xl mx-auto my-6 rounded-2xl border ${theme.card} shadow-xl overflow-hidden transition-all duration-300 transform hover:scale-[1.01]`}
+      className={`relative w-full transition-all duration-300 transform hover:scale-[1.01] ${
+        isDoubled ? "max-w-[440px] my-1" : "max-w-4xl mx-auto my-6"
+      } rounded-2xl border ${theme.card} shadow-xl overflow-hidden`}
       style={{
         aspectRatio: "1/1.414",
-        minHeight: "350px",
+        minHeight: isDoubled ? "280px" : "350px",
       }}
     >
       <div className="absolute top-0 inset-x-0 h-10 px-6 bg-gradient-to-b from-stone-900/5 to-transparent flex items-center justify-between text-[10px] font-mono text-stone-400 select-none pointer-events-none z-10 border-b border-stone-800/5">
@@ -226,6 +238,26 @@ export default function BookReader({
   const [iframeSrc, setIframeSrc] = useState<string>("");
   const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Book Page-Flip Config States
+  const [readerMode, setReaderMode] = useState<"flip" | "scroll">("flip");
+  const [readingDirection, setReadingDirection] = useState<"rtl" | "ltr">("rtl");
+  const [viewMode, setViewMode] = useState<"double" | "single">("double");
+  const [flipDirection, setFlipDirection] = useState<number>(1);
+
+  // Responsive window resize to adjust single vs spread page views
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setViewMode("single");
+      } else {
+        setViewMode("double");
+      }
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // PDF.js State Variables
   const [pdfjsLoaded, setPdfjsLoaded] = useState<boolean>(false);
@@ -757,6 +789,7 @@ export default function BookReader({
   }, [currentPage, totalPages]);
 
   const handleScrollToPage = (pageNum: number) => {
+    if (readerMode === "flip") return;
     isProgrammaticScroll.current = true;
     const el = document.getElementById(`pdf-page-${pageNum}`);
     if (el) {
@@ -768,8 +801,10 @@ export default function BookReader({
   };
 
   const handlePrevPage = () => {
+    const step = (readerMode === "flip" && viewMode === "double") ? 2 : 1;
     if (currentPage > 1) {
-      const newPage = currentPage - 1;
+      setFlipDirection(-1);
+      const newPage = Math.max(1, currentPage - step);
       setCurrentPage(newPage);
       savePageProgress(newPage, totalPages);
       handleScrollToPage(newPage);
@@ -777,8 +812,10 @@ export default function BookReader({
   };
 
   const handleNextPage = () => {
+    const step = (readerMode === "flip" && viewMode === "double") ? 2 : 1;
     if (currentPage < totalPages) {
-      const newPage = currentPage + 1;
+      setFlipDirection(1);
+      const newPage = Math.min(totalPages, currentPage + step);
       setCurrentPage(newPage);
       savePageProgress(newPage, totalPages);
       handleScrollToPage(newPage);
@@ -789,6 +826,7 @@ export default function BookReader({
     const val = parseInt(e.target.value);
     if (!isNaN(val)) {
       const clamped = Math.min(totalPages, Math.max(1, val));
+      setFlipDirection(clamped > currentPage ? 1 : -1);
       setCurrentPage(clamped);
       savePageProgress(clamped, totalPages);
       handleScrollToPage(clamped);
@@ -852,6 +890,7 @@ export default function BookReader({
 
   const handleJumpToPage = (page: number) => {
     const clamped = Math.min(totalPages, Math.max(1, page));
+    setFlipDirection(clamped > currentPage ? 1 : -1);
     setCurrentPage(clamped);
     savePageProgress(clamped, totalPages);
     handleScrollToPage(clamped);
@@ -913,6 +952,86 @@ export default function BookReader({
   };
 
   const currentTheme = themeClasses[readingTheme];
+
+  // Animation variants for realistic page turns
+  const spreadVariants = {
+    enter: (dir: number) => ({
+      rotateY: dir > 0 ? 30 : -30,
+      opacity: 0,
+      scale: 0.96,
+    }),
+    center: {
+      rotateY: 0,
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.55,
+        ease: [0.25, 1, 0.5, 1],
+      }
+    },
+    exit: (dir: number) => ({
+      rotateY: dir > 0 ? -30 : 30,
+      opacity: 0,
+      scale: 0.96,
+      transition: {
+        duration: 0.55,
+        ease: [0.25, 1, 0.5, 1],
+      }
+    })
+  };
+
+  const pageVariants = {
+    enter: (dir: number) => ({
+      rotateY: dir > 0 ? 45 : -45,
+      opacity: 0,
+      x: dir > 0 ? 150 : -150,
+      scale: 0.95,
+    }),
+    center: {
+      rotateY: 0,
+      opacity: 1,
+      x: 0,
+      scale: 1,
+      transition: {
+        duration: 0.55,
+        ease: [0.25, 1, 0.5, 1],
+      }
+    },
+    exit: (dir: number) => ({
+      rotateY: dir > 0 ? -45 : 45,
+      opacity: 0,
+      x: dir > 0 ? -150 : 150,
+      scale: 0.95,
+      transition: {
+        duration: 0.55,
+        ease: [0.25, 1, 0.5, 1],
+      }
+    })
+  };
+
+  const renderPageThickness = (side: "left" | "right") => {
+    const isRtl = readingDirection === "rtl";
+    const pagesBefore = isRtl ? totalPages - currentPage : currentPage;
+    const pagesAfter = isRtl ? currentPage : totalPages - currentPage;
+    const count = side === "left" 
+      ? Math.min(6, Math.max(1, Math.round(pagesBefore / 15))) 
+      : Math.min(6, Math.max(1, Math.round(pagesAfter / 15)));
+    
+    return (
+      <div className={`absolute top-2 bottom-2 ${side === "left" ? "-left-[6px]" : "-right-[6px]"} flex flex-row pointer-events-none z-0`}>
+        {Array.from({ length: count }).map((_, i) => (
+          <div 
+            key={i} 
+            className="w-[1px] h-full bg-stone-400/25 border-r border-stone-900/10" 
+            style={{
+              transform: `translateX(${side === "left" ? -i * 1.5 : i * 1.5}px)`,
+              opacity: 1 - (i * 0.15),
+            }}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-stone-950/95 z-50 flex items-center justify-center p-0 md:p-4 backdrop-blur-md">
@@ -991,10 +1110,75 @@ export default function BookReader({
           {/* Main Reading Canvas (Left/Center Pane) */}
           <div className={`flex-1 flex flex-col items-stretch relative p-3 md:p-6 transition-colors duration-500 ${currentTheme.bg} overflow-hidden`}>
             
-            {/* Quick floating reading tip */}
-            <div className="absolute top-4 left-4 bg-stone-950/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-stone-850 pointer-events-none hidden md:flex items-center gap-2 text-[10px] font-mono text-stone-400 shadow z-10">
-              <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
-              <span>Scroll down to read smoothly like a book</span>
+            {/* Floating Reader Toolbar */}
+            <div className="mx-auto bg-stone-950/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-stone-850 shadow-lg flex flex-wrap items-center justify-center gap-4 z-10 text-xs text-stone-300 font-mono select-none">
+              <div className="flex items-center gap-1 bg-stone-900/90 px-2 py-1 rounded-xl border border-stone-800">
+                <span className="text-[9px] text-stone-500 mr-1 uppercase font-bold">Mode:</span>
+                <button
+                  onClick={() => setReaderMode("flip")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    readerMode === "flip" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  3D Flip
+                </button>
+                <button
+                  onClick={() => setReaderMode("scroll")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    readerMode === "scroll" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  Scroll
+                </button>
+              </div>
+
+              {readerMode === "flip" && (
+                <>
+                  {/* View mode selector (Double/Single) */}
+                  <div className="hidden sm:flex items-center gap-1 bg-stone-900/90 px-2 py-1 rounded-xl border border-stone-800">
+                    <span className="text-[9px] text-stone-500 mr-1 uppercase font-bold">Layout:</span>
+                    <button
+                      onClick={() => setViewMode("double")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        viewMode === "double" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                      }`}
+                    >
+                      Spread
+                    </button>
+                    <button
+                      onClick={() => setViewMode("single")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        viewMode === "single" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                      }`}
+                    >
+                      Single
+                    </button>
+                  </div>
+
+                  {/* Reading direction selector (RTL/LTR) */}
+                  <div className="flex items-center gap-1 bg-stone-900/90 px-2 py-1 rounded-xl border border-stone-800">
+                    <span className="text-[9px] text-stone-500 mr-1 uppercase font-bold">Flow:</span>
+                    <button
+                      onClick={() => setReadingDirection("rtl")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        readingDirection === "rtl" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                      }`}
+                      title="Right-to-Left (Traditional Urdu script books)"
+                    >
+                      RTL (Urdu)
+                    </button>
+                    <button
+                      onClick={() => setReadingDirection("ltr")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        readingDirection === "ltr" ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                      }`}
+                      title="Left-to-Right (Standard English/Western layout)"
+                    >
+                      LTR
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* High fidelity Zoom controls */}
@@ -1031,77 +1215,250 @@ export default function BookReader({
                   <div className="w-12 h-12 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
                   <span className="text-xs font-mono text-stone-500 uppercase tracking-widest font-mono">Opening literary document...</span>
                 </div>
-              ) : pdfDoc ? (
-                /* Elegant scrolling canvas-based PDF.js book rendering */
-                <div className="w-full space-y-6 pt-10">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                    <PDFPageRenderer
-                      key={pageNum}
-                      pdfDoc={pdfDoc}
-                      pageNum={pageNum}
-                      scale={zoomScale}
-                      theme={currentTheme}
-                      pageHighlights={highlights.filter((h) => h.pageNum === pageNum)}
-                      onRemoveHighlight={handleRemoveHighlight}
-                      onPageVisible={(num) => {
-                        if (currentPage !== num && !isProgrammaticScroll.current) {
-                          setCurrentPage(num);
-                          savePageProgress(num, totalPages);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : iframeSrc ? (
-                <div className="w-full h-full relative rounded-2xl overflow-hidden border border-stone-300/10 shadow-lg flex flex-col bg-white">
-                  {pdfLoadingError && (
-                    <div className="bg-amber-950 text-amber-400 border-b border-amber-900/50 px-4 py-2 flex items-center justify-between text-xs select-none">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" />
-                        <span className="font-sans">High-performance PDF engine bypassed ({pdfLoadingError}). Displaying standard fallback viewer instead.</span>
-                      </div>
-                      <button 
-                        onClick={() => setPdfLoadingError(null)}
-                        className="text-[10px] font-mono text-stone-400 hover:text-stone-200 cursor-pointer underline px-2 py-0.5 rounded bg-stone-900 hover:bg-stone-850"
+              ) : readerMode === "flip" && pdfDoc ? (
+                /* Real 3D Book Page Flip Reader */
+                <div className="flex-1 flex flex-col justify-center items-center relative py-4 px-1 md:px-6 overflow-hidden select-none">
+                  
+                  <div className="relative w-full max-w-5xl flex items-center justify-center p-2">
+                    
+                    {/* Outer Book Frame Wrapper with Perspective */}
+                    <div 
+                      className="relative w-full flex flex-row items-center justify-center bg-stone-900/5 rounded-3xl p-1.5 shadow-inner border border-stone-800/10"
+                      style={{ perspective: "1500px" }}
+                    >
+                      
+                      {/* Animated Pages Spread Container */}
+                      <motion.div
+                        key={currentPage}
+                        custom={flipDirection}
+                        variants={viewMode === "double" ? spreadVariants : pageVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        drag="x"
+                        dragConstraints={{ left: 0, right: 0 }}
+                        dragElastic={0.2}
+                        onDragEnd={(e, info) => {
+                          const threshold = 50;
+                          if (info.offset.x < -threshold) {
+                            handleNextPage();
+                          } else if (info.offset.x > threshold) {
+                            handlePrevPage();
+                          }
+                        }}
+                        className={`w-full flex ${
+                          viewMode === "double" ? "flex-row" : "flex-col items-center"
+                        } justify-center relative bg-[#faf6eb]/5 rounded-2xl shadow-2xl p-2 md:p-3 gap-3 md:gap-5`}
                       >
-                        Dismiss
-                      </button>
+                        
+                        {/* Left Page stack depth indicator */}
+                        {viewMode === "double" && renderPageThickness("left")}
+                        
+                        {/* Left Page Zone */}
+                        {viewMode === "double" ? (
+                          <>
+                            {/* Left page content */}
+                            {readingDirection === "rtl" ? (
+                              /* RTL Left Page is currentPage + 1 */
+                              currentPage + 1 <= totalPages ? (
+                                <div className="flex-1 max-w-[48%]">
+                                  <PDFPageRenderer
+                                    pdfDoc={pdfDoc}
+                                    pageNum={currentPage + 1}
+                                    scale={zoomScale * 0.82}
+                                    theme={currentTheme}
+                                    pageHighlights={highlights.filter((h) => h.pageNum === currentPage + 1)}
+                                    onRemoveHighlight={handleRemoveHighlight}
+                                    onPageVisible={(num) => {}}
+                                    immediate={true}
+                                    isDoubled={true}
+                                  />
+                                </div>
+                              ) : (
+                                /* Placeholder blank back-cover */
+                                <div className={`flex-1 max-w-[48%] aspect-[1/1.414] rounded-2xl border ${currentTheme.card} shadow-xl flex flex-col items-center justify-center p-6 bg-stone-900/10 border-dashed opacity-40 select-none min-h-[280px]`}>
+                                  <Sparkles className="w-8 h-8 text-amber-500/20 mb-2" />
+                                  <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500">End of Volume</span>
+                                </div>
+                              )
+                            ) : (
+                              /* LTR Left Page is currentPage */
+                              <div className="flex-1 max-w-[48%]">
+                                <PDFPageRenderer
+                                  pdfDoc={pdfDoc}
+                                  pageNum={currentPage}
+                                  scale={zoomScale * 0.82}
+                                  theme={currentTheme}
+                                  pageHighlights={highlights.filter((h) => h.pageNum === currentPage)}
+                                  onRemoveHighlight={handleRemoveHighlight}
+                                  onPageVisible={(num) => {}}
+                                  immediate={true}
+                                  isDoubled={true}
+                                />
+                              </div>
+                            )}
+
+                            {/* Center Spine Crease shadow line */}
+                            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[4px] bg-gradient-to-r from-stone-950/30 via-stone-950/60 to-stone-950/30 pointer-events-none z-10 shadow-inner" />
+
+                            {/* Right Page Zone */}
+                            {readingDirection === "rtl" ? (
+                              /* RTL Right Page is currentPage */
+                              <div className="flex-1 max-w-[48%]">
+                                <PDFPageRenderer
+                                  pdfDoc={pdfDoc}
+                                  pageNum={currentPage}
+                                  scale={zoomScale * 0.82}
+                                  theme={currentTheme}
+                                  pageHighlights={highlights.filter((h) => h.pageNum === currentPage)}
+                                  onRemoveHighlight={handleRemoveHighlight}
+                                  onPageVisible={(num) => {}}
+                                  immediate={true}
+                                  isDoubled={true}
+                                />
+                              </div>
+                            ) : (
+                              /* LTR Right Page is currentPage + 1 */
+                              currentPage + 1 <= totalPages ? (
+                                <div className="flex-1 max-w-[48%]">
+                                  <PDFPageRenderer
+                                    pdfDoc={pdfDoc}
+                                    pageNum={currentPage + 1}
+                                    scale={zoomScale * 0.82}
+                                    theme={currentTheme}
+                                    pageHighlights={highlights.filter((h) => h.pageNum === currentPage + 1)}
+                                    onRemoveHighlight={handleRemoveHighlight}
+                                    onPageVisible={(num) => {}}
+                                    immediate={true}
+                                    isDoubled={true}
+                                  />
+                                </div>
+                              ) : (
+                                /* Placeholder blank back-cover */
+                                <div className={`flex-1 max-w-[48%] aspect-[1/1.414] rounded-2xl border ${currentTheme.card} shadow-xl flex flex-col items-center justify-center p-6 bg-stone-900/10 border-dashed opacity-40 select-none min-h-[280px]`}>
+                                  <Sparkles className="w-8 h-8 text-amber-500/20 mb-2" />
+                                  <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500">End of Volume</span>
+                                </div>
+                              )
+                            )}
+                          </>
+                        ) : (
+                          /* Single Page Zone (always on mobile or if toggled) */
+                          <div className="w-full max-w-xl">
+                            <PDFPageRenderer
+                              pdfDoc={pdfDoc}
+                              pageNum={currentPage}
+                              scale={zoomScale * 0.95}
+                              theme={currentTheme}
+                              pageHighlights={highlights.filter((h) => h.pageNum === currentPage)}
+                              onRemoveHighlight={handleRemoveHighlight}
+                              onPageVisible={(num) => {}}
+                              immediate={true}
+                            />
+                          </div>
+                        )}
+
+                        {/* Right Page stack depth indicator */}
+                        {viewMode === "double" && renderPageThickness("right")}
+
+                      </motion.div>
+
                     </div>
-                  )}
-                  {/* Embedded PDF/EPUB via standard iframe fallback */}
-                  <iframe
-                    src={iframeSrc}
-                    className="w-full h-full rounded-2xl flex-1 bg-white min-h-[500px]"
-                    title={book.title}
-                    allow="autoplay"
-                  />
-                </div>
-              ) : pdfLoadingError ? (
-                <div className="my-auto flex flex-col items-center justify-center text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
-                  <HelpCircle className="w-8 h-8 text-amber-500/40 mx-auto mb-2" />
-                  <p className="text-xs font-serif text-stone-400 mb-4">
-                    PDF.js was unable to render the document structure directly. 
-                  </p>
-                  <p className="text-[11px] font-mono text-rose-400/80 mb-4 bg-rose-950/20 p-2 rounded border border-rose-900/20 max-w-xs break-words font-mono">
-                    {pdfLoadingError}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setPdfLoadingError(null);
-                      // Fallback to basic iframe
-                      setIframeSrc(`${resolvedBlobUrl || resolveBookUrl(file.url)}#page=${currentPage}`);
-                    }}
-                    className="px-4 py-2 bg-amber-500 text-stone-950 text-xs font-mono font-bold rounded-xl hover:bg-amber-400 cursor-pointer font-mono"
-                  >
-                    Use standard view fallback
-                  </button>
+
+                  </div>
+
+                  {/* Tactile Side Overlay Page-Flip Click Zones for easy clicking */}
+                  <div className="absolute inset-y-0 left-0 w-12 md:w-20 bg-gradient-to-r from-stone-950/5 to-transparent flex items-center justify-start pl-2 opacity-0 hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                    <button
+                      onClick={handlePrevPage}
+                      disabled={currentPage <= 1}
+                      className="w-10 h-10 rounded-full bg-stone-950/85 border border-stone-800 flex items-center justify-center text-amber-500 shadow-xl pointer-events-auto hover:bg-stone-900 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="absolute inset-y-0 right-0 w-12 md:w-20 bg-gradient-to-l from-stone-950/5 to-transparent flex items-center justify-end pr-2 opacity-0 hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                    <button
+                      onClick={handleNextPage}
+                      disabled={currentPage >= totalPages}
+                      className="w-10 h-10 rounded-full bg-stone-950/85 border border-stone-800 flex items-center justify-center text-amber-500 shadow-xl pointer-events-auto hover:bg-stone-900 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
                 </div>
               ) : (
-                <div className="my-auto text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
-                  <HelpCircle className="w-8 h-8 text-amber-500/40 mx-auto mb-2" />
-                  <p className="text-xs font-serif text-stone-400">
-                    Could not load document file source. Ensure your browser allows viewing PDFs or check if the source file is still active.
-                  </p>
+                /* Scrolling continuous page view */
+                <div className="w-full space-y-6 pt-10">
+                  {pdfDoc ? (
+                    Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <PDFPageRenderer
+                        key={pageNum}
+                        pdfDoc={pdfDoc}
+                        pageNum={pageNum}
+                        scale={zoomScale}
+                        theme={currentTheme}
+                        pageHighlights={highlights.filter((h) => h.pageNum === pageNum)}
+                        onRemoveHighlight={handleRemoveHighlight}
+                        onPageVisible={(num) => {
+                          if (currentPage !== num && !isProgrammaticScroll.current) {
+                            setCurrentPage(num);
+                            savePageProgress(num, totalPages);
+                          }
+                        }}
+                      />
+                    ))
+                  ) : iframeSrc ? (
+                    <div className="w-full h-full relative rounded-2xl overflow-hidden border border-stone-300/10 shadow-lg flex flex-col bg-white">
+                      {pdfLoadingError && (
+                        <div className="bg-amber-950 text-amber-400 border-b border-amber-900/50 px-4 py-2 flex items-center justify-between text-xs select-none">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse flex-shrink-0" />
+                            <span className="font-sans">High-performance PDF engine bypassed ({pdfLoadingError}). Displaying standard fallback viewer instead.</span>
+                          </div>
+                          <button 
+                            onClick={() => setPdfLoadingError(null)}
+                            className="text-[10px] font-mono text-stone-400 hover:text-stone-200 cursor-pointer underline px-2 py-0.5 rounded bg-stone-900 hover:bg-stone-850"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+                      <iframe
+                        src={iframeSrc}
+                        className="w-full h-full rounded-2xl flex-1 bg-white min-h-[500px]"
+                        title={book.title}
+                        allow="autoplay"
+                      />
+                    </div>
+                  ) : pdfLoadingError ? (
+                    <div className="my-auto flex flex-col items-center justify-center text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
+                      <HelpCircle className="w-8 h-8 text-amber-500/40 mx-auto mb-2" />
+                      <p className="text-xs font-serif text-stone-400 mb-4">
+                        PDF.js was unable to render the document structure directly. 
+                      </p>
+                      <p className="text-[11px] font-mono text-rose-400/80 mb-4 bg-rose-950/20 p-2 rounded border border-rose-900/20 max-w-xs break-words font-mono">
+                        {pdfLoadingError}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setPdfLoadingError(null);
+                          setIframeSrc(`${resolvedBlobUrl || resolveBookUrl(file.url)}#page=${currentPage}`);
+                        }}
+                        className="px-4 py-2 bg-amber-500 text-stone-950 text-xs font-mono font-bold rounded-xl hover:bg-amber-400 cursor-pointer font-mono"
+                      >
+                        Use standard view fallback
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="my-auto text-center p-6 border border-dashed rounded-2xl border-stone-400/20 max-w-sm mx-auto">
+                      <HelpCircle className="w-8 h-8 text-amber-500/40 mx-auto mb-2" />
+                      <p className="text-xs font-serif text-stone-400">
+                        Could not load document file source. Ensure your browser allows viewing PDFs or check if the source file is still active.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
