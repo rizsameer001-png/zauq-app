@@ -36,7 +36,7 @@ import { BookReviews } from "./BookReviews";
 import PoetTimeline from "./PoetTimeline";
 import BookReader from "./BookReader";
 import { getMediaFile, getAllCachedKeys } from "../mediaDb";
-import { db, handleFirestoreError, OperationType, resolveBookUrl } from "../firebase";
+import { db, handleFirestoreError, OperationType, resolveBookUrl, logUserActivity } from "../firebase";
 import { collection, doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { User as FirebaseUser } from "firebase/auth";
 
@@ -75,10 +75,12 @@ const LocalMediaImage = ({
             setSrc(objectUrl);
           }
         } else {
-          if (active) setSrc(url);
+          // Resolve remote urls relative to the domain
+          const resolvedUrl = resolveBookUrl(url);
+          if (active) setSrc(resolvedUrl);
         }
       } catch (err) {
-        console.error("Failed to load local media:", err);
+        console.error("Failed to load local/remote media:", err);
       } finally {
         if (active) setLoading(false);
       }
@@ -630,6 +632,9 @@ const BookDetailModal = ({
                 isAuthor={false}
               />
             </div>
+            <span className="text-[8.5px] font-mono text-stone-500 bg-stone-900/40 px-2 py-1 rounded border border-stone-900/80 truncate w-full text-center block select-all" title={resolveBookUrl(book.coverImageUrl)}>
+              Cover Path: {resolveBookUrl(book.coverImageUrl) || "None"}
+            </span>
 
             {/* Author Profile Quick-Link */}
             <div className="bg-stone-950/50 border border-stone-900 rounded-2xl p-3 w-full flex items-center gap-3">
@@ -929,6 +934,9 @@ const BookDetailModal = ({
                       onUpdateProgress(localReadProgress, pct);
                     }}
                   />
+                  <span className="text-[8.5px] font-mono text-stone-500 bg-stone-900/30 px-2 py-1 rounded border border-stone-900/60 truncate block select-all mt-1" title={resolveBookUrl(book.audioUrl)}>
+                    Audio Path: {resolveBookUrl(book.audioUrl) || "None"}
+                  </span>
                 </div>
               )}
 
@@ -973,6 +981,9 @@ const BookDetailModal = ({
                         <span className="font-serif font-bold text-xs leading-tight block truncate group-hover:text-amber-200">{file.name}</span>
                         <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wide block mt-0.5">
                           {isPdf ? "PDF Document" : "EPUB eBook Edition"}
+                        </span>
+                        <span className="text-[8px] font-mono text-amber-500/70 block truncate mt-0.5 select-all" title={resolveBookUrl(file.url)}>
+                          Path: {resolveBookUrl(file.url) || "None"}
                         </span>
                       </div>
                       <Download className="w-4 h-4 text-stone-500 group-hover:text-amber-400 flex-shrink-0 transition-colors" />
@@ -1218,6 +1229,7 @@ export default function LibraryView({
             totalPages: finalTotal,
             lastUpdated: serverTimestamp()
           });
+          logUserActivity("update_progress", `Updated progress for book ID ${bookId}: Read ${readVal}%, Listen ${listenVal}%`);
         } catch (error) {
           handleFirestoreError(error, OperationType.WRITE, collectionPath);
         }

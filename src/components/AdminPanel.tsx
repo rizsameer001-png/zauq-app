@@ -11,7 +11,11 @@ import {
   ChevronRight, 
   Check, 
   Sparkles, 
-  Lock, 
+  Lock,
+  Shield,
+  ShieldAlert,
+  UserX,
+  Unlock, 
   ArrowUp, 
   ArrowDown,
   Info,
@@ -28,14 +32,15 @@ import {
   Calendar,
   Clock,
   Palette,
-  Type
+  Type,
+  Activity
 } from "lucide-react";
 import { Ghazal, Sher, ZauqVideo, Author, Book, CMSPage } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { db, handleFirestoreError, OperationType, uploadToStorage, uploadToStorageWithProgress, sanitizeForFirestore } from "../firebase";
 import { generatePdfThumbnail } from "../utils/pdfThumbnail";
 import { makeUrlRelative } from "../utils/url";
-import { doc, setDoc, deleteDoc, collection, serverTimestamp, updateDoc, getDoc, getDocs } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, collection, serverTimestamp, updateDoc, getDoc, getDocs, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 import { saveVideoFile, deleteVideoFile, getVideoFile } from "../videoDb";
 import { saveMediaFile, deleteMediaFile, getMediaFile } from "../mediaDb";
 
@@ -62,8 +67,19 @@ export default function AdminPanel({
   onSignIn,
   triggerToast 
 }: AdminPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets" | "settings" | "cms">("ghazals");
+  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets" | "settings" | "cms" | "security">("ghazals");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Security & User Login States
+  const [userLoginAllowed, setUserLoginAllowed] = useState<boolean>(true);
+  const [bannedUsers, setBannedUsers] = useState<any[]>([]);
+  const [banEmail, setBanEmail] = useState("");
+  const [banUserIdInput, setBanUserIdInput] = useState("");
+  const [banReason, setBanReason] = useState("");
+  const [banWrongActivityLog, setBanWrongActivityLog] = useState("");
+  const [isBanning, setIsBanning] = useState(false);
+  const [selectedAuditFilter, setSelectedAuditFilter] = useState("all");
+  const [auditSearchQuery, setAuditSearchQuery] = useState("");
 
   // Branding & Global Personalization Settings States
   const [bgTheme, setBgTheme] = useState("midnight");
@@ -110,6 +126,9 @@ export default function AdminPanel({
           setBannerTagline(data.bannerTagline || "");
           setBannerImageUrl(makeUrlRelative(data.bannerImageUrl || ""));
           setBannerLink(data.bannerLink || "deewan");
+          if (data.userLoginAllowed !== undefined) {
+            setUserLoginAllowed(data.userLoginAllowed);
+          }
         }
       } catch (err) {
         console.error("Error fetching settings:", err);
@@ -117,6 +136,117 @@ export default function AdminPanel({
     }
     loadConfig();
   }, []);
+
+  // Listen to the banned_users collection when activeSubTab is "security"
+  useEffect(() => {
+    if (activeSubTab !== "security") return;
+    const q = collection(db, "banned_users");
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ ...docSnap.data(), docId: docSnap.id });
+      });
+      setBannedUsers(list);
+    }, (err) => {
+      console.error("Error loading banned users:", err);
+    });
+    return () => unsubscribe();
+  }, [activeSubTab]);
+
+  // Listen to the audit_logs collection when activeSubTab is "audit"
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeSubTab !== "audit") return;
+    setAuditLoading(true);
+    const logsRef = collection(db, "audit_logs");
+    const q = query(logsRef, orderBy("timestamp", "desc"), limit(100));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ ...docSnap.data(), docId: docSnap.id });
+      });
+      setAuditLogs(list);
+      setAuditLoading(false);
+    }, (err) => {
+      console.error("Error loading audit logs:", err);
+      setAuditLoading(false);
+    });
+    return () => unsubscribe();
+  }, [activeSubTab]);
+
+  const handleSaveSecuritySettings = async (allowed: boolean) => {
+    try {
+      const configRef = doc(db, "settings", "global_config");
+      await setDoc(configRef, {
+        userLoginAllowed: allowed,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setUserLoginAllowed(allowed);
+      triggerToast(`User logins are now ${allowed ? "ENABLED" : "DISABLED"} globally.`);
+    } catch (err) {
+      console.error("Error saving login settings:", err);
+      triggerToast("Failed to update access settings.");
+    }
+  };
+
+  const handleBanUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!banEmail.trim() && !banUserIdInput.trim()) {
+      triggerToast("Please provide either an Email or a User ID to ban.");
+      return;
+    }
+
+    try {
+      setIsBanning(true);
+      
+      const docId = banUserIdInput.trim() 
+        ? banUserIdInput.trim() 
+        : "email_" + banEmail.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, "_");
+
+      const banRef = doc(db, "banned_users", docId);
+      await setDoc(banRef, {
+        id: docId,
+        email: banEmail.trim().toLowerCase(),
+        userId: banUserIdInput.trim() || null,
+        reason: banReason.trim() || "Wrong activity detected.",
+        wrongActivityLog: banWrongActivityLog.trim() || "N/A",
+        bannedAt: new Date().toISOString()
+      });
+
+      triggerToast(`User ${banEmail || banUserIdInput} has been banned successfully!`);
+      setBanEmail("");
+      setBanUserIdInput("");
+      setBanReason("");
+      setBanWrongActivityLog("");
+    } catch (err) {
+      console.error("Failed to ban user:", err);
+      triggerToast("Error banning user. Check database permissions.");
+    } finally {
+      setIsBanning(false);
+    }
+  };
+
+  const handleInvestigateLog = (log: any) => {
+    setBanEmail(log.userEmail || "");
+    setBanUserIdInput(log.userId || "");
+    setBanReason(`Automatic investigation from audit log action: "${log.action}"`);
+    setBanWrongActivityLog(`Wrong activity flagged: ${log.details}`);
+    setActiveSubTab("security");
+    triggerToast("Transferred user data to Gatekeeper for investigation.");
+  };
+
+  const handleUnbanUser = async (docId: string) => {
+    try {
+      await deleteDoc(doc(db, "banned_users", docId));
+      triggerToast("User unbanned successfully.");
+    } catch (err) {
+      console.error("Error unbanning user:", err);
+      triggerToast("Failed to unban user.");
+    }
+  };
 
   const handleSaveBranding = async () => {
     try {
@@ -1789,8 +1919,8 @@ For any inquiries regarding your data or to request account deletion, please con
               </p>
             </div>
 
-            {/* Sub-Tabs: Poets, Ghazals, Videos, Authors, Books, or Couplets */}
-            <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-3 xl:grid-cols-6 gap-1 p-1 bg-stone-950/80 border border-stone-900 rounded-2xl">
+            {/* Sub-Tabs: Poets, Ghazals, Videos, Authors, Books, Couplets, Branding, CMS Pages, Security, or Audit Log */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-10 gap-1 p-1 bg-stone-950/80 border border-stone-900 rounded-2xl">
               <button
                 onClick={() => {
                   setActiveSubTab("ghazals");
@@ -1907,10 +2037,38 @@ For any inquiries regarding your data or to request account deletion, please con
                 <FileText className="w-3.5 h-3.5" />
                 <span>CMS Pages</span>
               </button>
+              <button
+                onClick={() => {
+                  setActiveSubTab("security");
+                  setSearchQuery("");
+                }}
+                className={`py-1.5 px-1 rounded-xl text-[9px] font-semibold font-serif tracking-wide transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                  activeSubTab === "security"
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+                    : "text-stone-500 hover:text-stone-300"
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Security</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSubTab("audit");
+                  setSearchQuery("");
+                }}
+                className={`py-1.5 px-1 rounded-xl text-[9px] font-semibold font-serif tracking-wide transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                  activeSubTab === "audit"
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
+                    : "text-stone-500 hover:text-stone-300"
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Audit Log</span>
+              </button>
             </div>
 
             {/* Search */}
-            {activeSubTab !== "settings" && activeSubTab !== "cms" && (
+            {activeSubTab !== "settings" && activeSubTab !== "cms" && activeSubTab !== "security" && activeSubTab !== "audit" && (
               <div className="bg-stone-900/40 p-4 rounded-2xl border border-stone-900/80 backdrop-blur-md">
                 <div className="relative">
                   <input
@@ -2163,6 +2321,95 @@ For any inquiries regarding your data or to request account deletion, please con
                   </div>
                 )
               )}
+            </div>
+          ) : activeSubTab === "audit" ? (
+            <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 flex flex-col gap-5 text-left animate-fadeIn">
+              {/* Audit Controls & Quick Stats */}
+              <div>
+                <h4 className="text-xs font-mono uppercase tracking-widest text-amber-400 font-bold border-b border-stone-900 pb-2 flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-amber-500" />
+                  Audit Analytics
+                </h4>
+                <p className="text-[10px] text-stone-500 mt-1.5 leading-relaxed font-serif">
+                  Real-time intelligence from the Gatekeeper. Track active session events, saves, commentaries, and progress updates.
+                </p>
+              </div>
+
+              {/* Stat Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-stone-950/60 p-3 rounded-xl border border-stone-900/60">
+                  <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wider block mb-0.5">Total Logs</span>
+                  <span className="text-base font-serif font-bold text-amber-300">
+                    {auditLogs.length}
+                  </span>
+                </div>
+                <div className="bg-stone-950/60 p-3 rounded-xl border border-stone-900/60">
+                  <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wider block mb-0.5">Logins</span>
+                  <span className="text-base font-serif font-bold text-blue-400">
+                    {auditLogs.filter(log => log.action === "sign_in").length}
+                  </span>
+                </div>
+                <div className="bg-stone-950/60 p-3 rounded-xl border border-stone-900/60">
+                  <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wider block mb-0.5">Saves / Adds</span>
+                  <span className="text-base font-serif font-bold text-emerald-400">
+                    {auditLogs.filter(log => log.action === "save_sher").length}
+                  </span>
+                </div>
+                <div className="bg-stone-950/60 p-3 rounded-xl border border-stone-900/60">
+                  <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wider block mb-0.5">Reviews</span>
+                  <span className="text-base font-serif font-bold text-purple-400">
+                    {auditLogs.filter(log => log.action === "add_review" || log.action === "edit_review" || log.action === "delete_review").length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Filter List */}
+              <div className="bg-stone-950/40 p-4 rounded-xl border border-stone-900/80 flex flex-col gap-3">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-stone-500 block">Filter Feed</span>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    { id: "all", label: "All Activities", count: auditLogs.length, color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                    { id: "sign_in", label: "Logins", count: auditLogs.filter(l => l.action === "sign_in").length, color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+                    { id: "save_sher", label: "Couplet Saves", count: auditLogs.filter(l => l.action === "save_sher").length, color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+                    { id: "review", label: "Reviews", count: auditLogs.filter(l => l.action === "add_review" || l.action === "edit_review" || l.action === "delete_review").length, color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },
+                    { id: "update_progress", label: "Book Progress", count: auditLogs.filter(l => l.action === "update_progress").length, color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
+                  ].map(filter => {
+                    const isSelected = selectedAuditFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        onClick={() => setSelectedAuditFilter(filter.id)}
+                        className={`w-full text-left py-1.5 px-3 rounded-lg text-[11px] font-serif transition-all border flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? filter.color
+                            : "bg-stone-950/40 border-stone-900 text-stone-400 hover:text-stone-200 hover:bg-stone-900"
+                        }`}
+                      >
+                        <span>{filter.label}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-900/60 text-stone-500">
+                          {filter.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : activeSubTab === "security" ? (
+            <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 flex flex-col gap-4 text-left">
+              <h4 className="text-xs font-mono uppercase tracking-widest text-amber-400 font-bold border-b border-stone-900 pb-2 flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-amber-500" />
+                Security Gateway
+              </h4>
+              <p className="text-[10px] text-stone-400 leading-relaxed font-serif">
+                Configure standard user authentication blockades, blacklist malicious actors, and investigate wrong activity logs.
+              </p>
+              <div className="bg-amber-500/5 border border-amber-500/10 p-3.5 rounded-xl flex flex-col gap-2 mt-2">
+                <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-bold">Policy Reminder</span>
+                <p className="text-[10px] text-stone-400 leading-normal font-serif">
+                  You can restrict users from syncing notebooks to the cloud. When standard logins are disabled, users can still access static archives but cannot modify or synchronize records.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="bg-stone-900/20 p-5 rounded-2xl border border-stone-900/60 flex-1 flex flex-col gap-4">
@@ -5476,6 +5723,187 @@ For any inquiries regarding your data or to request account deletion, please con
                         <div className="py-24 text-center text-stone-500 flex flex-col items-center justify-center gap-3">
                           <FileText className="w-8 h-8 text-stone-700" />
                           <p className="text-xs">Select an existing CMS Page from the sidebar or click "New Page" to create a custom publishing route.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* SECURITY & ACCESS CONTROLS SUB-FORM */}
+              {activeSubTab === "security" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  className="bg-stone-900/30 border border-stone-900 p-6 md:p-8 rounded-3xl flex flex-col gap-6 relative"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-900/60 pb-4 gap-4">
+                    <div className="text-left">
+                      <h4 className="text-sm font-serif font-bold text-amber-300 flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-amber-500" />
+                        Gatekeeper Control Panel & Access Rules
+                      </h4>
+                      <p className="text-[10px] text-stone-500 mt-1">
+                        Control global authentication accessibility, view registered bans, and restrict specific user UIDs or Emails from accessing personal notebooks.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-left">
+                    {/* Left Column: Global Toggle and Ban Form */}
+                    <div className="lg:col-span-5 flex flex-col gap-6">
+                      <div className="bg-stone-950/40 border border-stone-900/60 p-5 rounded-2xl flex flex-col gap-4">
+                        <h5 className="text-xs font-mono uppercase text-amber-400 font-bold tracking-wider flex items-center gap-1.5 border-b border-stone-900 pb-2">
+                          <Lock className="w-3.5 h-3.5 text-amber-500" />
+                          Authentication Gatekeeper
+                        </h5>
+                        <p className="text-[10px] text-stone-400 leading-normal">
+                          Decide whether standard users are permitted to authenticate and access cloud notebooks. If disabled, only the Primary Administrator (amancib007@gmail.com) can authenticate.
+                        </p>
+                        
+                        <div className="flex items-center justify-between bg-stone-950 p-3 rounded-xl border border-stone-900 mt-2">
+                          <span className="text-xs font-serif font-medium text-stone-300">
+                            User Login Status
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSecuritySettings(!userLoginAllowed)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                              userLoginAllowed 
+                                ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" 
+                                : "bg-rose-500/15 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
+                            }`}
+                          >
+                            {userLoginAllowed ? "Allowed (Active) ✓" : "Banned (Disabled) ✗"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Ban a User Form */}
+                      <form onSubmit={handleBanUser} className="bg-stone-950/40 border border-stone-900/60 p-5 rounded-2xl flex flex-col gap-4">
+                        <h5 className="text-xs font-mono uppercase text-amber-400 font-bold tracking-wider flex items-center gap-1.5 border-b border-stone-900 pb-2">
+                          <UserX className="w-3.5 h-3.5 text-amber-500" />
+                          Apply New Ban Rule
+                        </h5>
+                        
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                            Target User Email
+                          </label>
+                          <input
+                            type="email"
+                            value={banEmail}
+                            onChange={(e) => setBanEmail(e.target.value)}
+                            placeholder="user@example.com"
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                            Target User ID (UID - Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={banUserIdInput}
+                            onChange={(e) => setBanUserIdInput(e.target.value)}
+                            placeholder="e.g. F8daKlsd8Fskd..."
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50 font-mono"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                            Reason for Ban
+                          </label>
+                          <input
+                            type="text"
+                            value={banReason}
+                            onChange={(e) => setBanReason(e.target.value)}
+                            placeholder="e.g. Wrong activity visible, spamming reviews"
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500/50"
+                            required
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-mono uppercase text-stone-500 tracking-wider">
+                            Activity Log / Evidence
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={banWrongActivityLog}
+                            onChange={(e) => setBanWrongActivityLog(e.target.value)}
+                            placeholder="Details of the malicious or incorrect activity detected..."
+                            className="bg-stone-950 border border-stone-900 text-stone-200 rounded-xl p-3 text-xs focus:outline-none focus:border-amber-500/50 resize-none font-sans"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isBanning}
+                          className="w-full mt-2 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-mono font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                          <span>{isBanning ? "Registering Ban..." : "Ban User"}</span>
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Right Column: Active Bans List */}
+                    <div className="lg:col-span-7 bg-stone-950/20 p-5 rounded-2xl border border-stone-900 flex flex-col gap-4">
+                      <h5 className="text-xs font-mono uppercase text-amber-400 font-bold tracking-wider flex items-center gap-1.5 border-b border-stone-900 pb-2">
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                        Active Ban Registry ({bannedUsers.length})
+                      </h5>
+
+                      {bannedUsers.length > 0 ? (
+                        <div className="flex flex-col gap-3 max-h-[500px] overflow-y-auto pr-1">
+                          {bannedUsers.map((banned) => (
+                            <div
+                              key={banned.docId}
+                              className="bg-stone-950 border border-stone-900 p-4 rounded-xl flex items-start justify-between gap-4 transition-all hover:border-rose-500/20"
+                            >
+                              <div className="flex-1 min-w-0 text-left">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-mono text-stone-300 font-semibold block truncate">
+                                    {banned.email || "No Email Specified"}
+                                  </span>
+                                  {banned.userId && (
+                                    <span className="text-[8px] bg-stone-900 text-stone-500 px-1.5 py-0.5 rounded font-mono">
+                                      UID: {banned.userId.substring(0, 8)}...
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-rose-400/90 font-serif italic mt-1.5">
+                                  Ban Reason: {banned.reason}
+                                </p>
+                                {banned.wrongActivityLog && banned.wrongActivityLog !== "N/A" && (
+                                  <div className="mt-2 bg-stone-900/65 rounded p-2 text-[9px] font-mono text-stone-500 leading-normal border border-stone-900/40">
+                                    Evidence Log: {banned.wrongActivityLog}
+                                  </div>
+                                )}
+                                <span className="text-[8px] font-mono text-stone-600 block mt-2">
+                                  Banned At: {banned.bannedAt ? new Date(banned.bannedAt).toLocaleString() : "Unknown"}
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUnbanUser(banned.docId)}
+                                className="p-1.5 rounded-lg border border-stone-800 hover:border-emerald-500/30 text-stone-600 hover:text-emerald-400 transition-all flex items-center justify-center cursor-pointer flex-shrink-0"
+                                title="Unban User"
+                              >
+                                <Unlock className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-24 text-center text-stone-500 flex flex-col items-center justify-center gap-3">
+                          <Shield className="w-8 h-8 text-stone-700" />
+                          <p className="text-xs">No active user bans recorded in the database.</p>
                         </div>
                       )}
                     </div>

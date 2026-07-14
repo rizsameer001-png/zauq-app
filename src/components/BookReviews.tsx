@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User as FirebaseUser } from "firebase/auth";
-import { db, handleFirestoreError, OperationType } from "../firebase";
+import { db, handleFirestoreError, OperationType, logUserActivity } from "../firebase";
 import { 
   collection, 
   doc, 
@@ -152,6 +152,7 @@ export const BookReviews: React.FC<BookReviewsProps> = ({
       setNewReviewText("");
       setRating(5); // Reset to default 5 stars
       await updateBookStats(bookId);
+      logUserActivity("add_review", `Posted commentary on book ID ${bookId}: "${trimmedText.substring(0, 40)}..."`);
       triggerToast("Your literary commentary has been graced onto this book! ✒️");
     } catch (error) {
       console.error("Error saving review: ", error);
@@ -193,6 +194,7 @@ export const BookReviews: React.FC<BookReviewsProps> = ({
       setEditingReviewId(null);
       setEditingText("");
       await updateBookStats(bookId);
+      logUserActivity("edit_review", `Updated commentary on book ID ${bookId}: "${trimmedText.substring(0, 40)}..."`);
       triggerToast("Your commentary has been revised successfully. 📝");
     } catch (error) {
       console.error("Error updating review: ", error);
@@ -209,6 +211,7 @@ export const BookReviews: React.FC<BookReviewsProps> = ({
       await deleteDoc(reviewDocRef);
       setDeletingReviewId(null);
       await updateBookStats(bookId);
+      logUserActivity("delete_review", `Deleted commentary on book ID ${bookId}`);
       triggerToast("Your commentary has been removed. 🗑️");
     } catch (error) {
       console.error("Error deleting review: ", error);

@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { getFirestore, doc, getDocFromServer } from "firebase/firestore";
+import { getFirestore, doc, getDocFromServer, collection, setDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, uploadBytesResumable } from "firebase/storage";
 import firebaseConfig from "../firebase-applet-config.json";
 
@@ -215,5 +215,34 @@ export function sanitizeForFirestore<T>(obj: T): T {
     return res;
   }
   return obj;
+}
+
+export async function logUserActivity(
+  action: string,
+  details: string,
+  customUserInfo?: { uid?: string; email?: string | null; displayName?: string | null }
+) {
+  try {
+    const currentUser = auth.currentUser;
+    const uid = customUserInfo?.uid || currentUser?.uid || "anonymous";
+    const email = customUserInfo?.email !== undefined ? customUserInfo.email : (currentUser?.email || "anonymous@zauq.com");
+    const name = customUserInfo?.displayName !== undefined ? customUserInfo.displayName : (currentUser?.displayName || "Guest User");
+    
+    const logsRef = collection(db, "audit_logs");
+    const newLogRef = doc(logsRef);
+    
+    await setDoc(newLogRef, {
+      id: newLogRef.id,
+      userId: uid,
+      userEmail: email,
+      userName: name,
+      action: action,
+      details: details,
+      timestamp: new Date().toISOString(),
+      ipAddress: "127.0.0.1"
+    });
+  } catch (err) {
+    console.error("Error logging user activity:", err);
+  }
 }
 

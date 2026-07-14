@@ -233,6 +233,14 @@
           "type": "number",
           "description": "Percentage of book listened to (0 to 100)"
         },
+        "currentPage": {
+          "type": "number",
+          "description": "The current page number saved"
+        },
+        "totalPages": {
+          "type": "number",
+          "description": "The total pages in the book"
+        },
         "lastUpdated": {
           "type": "string",
           "format": "date-time",
@@ -364,12 +372,45 @@
         "bannerLink": {
           "type": "string"
         },
+        "userLoginAllowed": {
+          "type": "boolean",
+          "description": "Whether user logins are allowed globally"
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time"
         }
       },
       "required": ["id"]
+    },
+    "BannedUser": {
+      "title": "BannedUser",
+      "description": "Information about a banned user, stored by the administrator",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the banned user (UID or email-slug)"
+        },
+        "email": {
+          "type": "string",
+          "description": "The email of the banned user"
+        },
+        "reason": {
+          "type": "string",
+          "description": "The reason why the user was banned"
+        },
+        "wrongActivityLog": {
+          "type": "string",
+          "description": "Optional log of the malicious or incorrect activity detected"
+        },
+        "bannedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the ban was applied"
+        }
+      },
+      "required": ["id", "email", "bannedAt"]
     },
     "CMSPage": {
       "title": "CMSPage",
@@ -395,12 +436,61 @@
         }
       },
       "required": ["id", "title", "content", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Real-time audit log of user activities, such as logins, book progress updates, and content saves, for security monitoring",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the audit log"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who performed the action"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "The email of the user who performed the action"
+        },
+        "userName": {
+          "type": "string",
+          "description": "The name of the user who performed the action"
+        },
+        "action": {
+          "type": "string",
+          "description": "The action category, e.g., 'login', 'save_sher', 'delete_sher', 'add_review', 'update_progress'"
+        },
+        "details": {
+          "type": "string",
+          "description": "Human-readable description or details of the activity"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the activity occurred"
+        },
+        "ipAddress": {
+          "type": "string",
+          "description": "Optional/Mocked IP address or user-agent for logging"
+        }
+      },
+      "required": ["id", "action", "timestamp"]
     }
   },
   "firestore": {
+    "audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Real-time audit log list of user interactions monitored by the administrator"
+    },
     "cms_pages/{pageId}": {
       "schema": "CMSPage",
       "description": "Content management pages created or updated by the administrator"
+    },
+    "banned_users/{bannedUserId}": {
+      "schema": "BannedUser",
+      "description": "Registry of banned users managed by the administrator"
     },
     "settings/{settingId}": {
       "schema": "GlobalSettings",

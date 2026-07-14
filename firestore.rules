@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId && isNotBanned();
     }
 
     function isValidId(id) {
@@ -22,6 +22,18 @@ service cloud.firestore {
 
     function incoming() {
       return request.resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == "amancib007@gmail.com";
+    }
+
+    function isNotBanned() {
+      return !isSignedIn()
+          || (
+               !exists(/databases/$(database)/documents/banned_users/$(request.auth.uid))
+               && (!('email' in request.auth.token) || !exists(/databases/$(database)/documents/banned_users/$(request.auth.token.email)))
+             );
     }
 
     function isValidSher(data, uid) {
@@ -41,6 +53,8 @@ service cloud.firestore {
           && data.userId == uid
           && data.readProgress is number && data.readProgress >= 0 && data.readProgress <= 100
           && data.listenProgress is number && data.listenProgress >= 0 && data.listenProgress <= 100
+          && (!('currentPage' in data) || (data.currentPage is number && data.currentPage >= 1))
+          && (!('totalPages' in data) || (data.totalPages is number && data.totalPages >= 1))
           && data.lastUpdated == request.time;
     }
 
@@ -121,10 +135,23 @@ service cloud.firestore {
         && isValidId(pageId);
     }
 
-    // Match rules for public poets and ghazals collections
+    // Match rules for settings and configurations
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && (isAdmin() || request.auth.token.email != null);
+    }
+
+    // Match rules for banned users registry
+    match /banned_users/{bannedUserId} {
+      allow read: if isSignedIn() && (isAdmin() || request.auth.uid == bannedUserId || (request.auth.token.email != null && request.auth.token.email == bannedUserId));
+      allow write: if isAdmin();
+    }
+
+    // Match rules for audit logs
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Audit logs are immutable and can only be created
     }
 
     match /poets/{poetId} {
@@ -202,6 +229,7 @@ service cloud.firestore {
       match /reviews/{reviewId} {
         allow read: if true;
         allow create: if isSignedIn()
+          && isNotBanned()
           && isValidId(bookId)
           && isValidId(reviewId)
           && isValidBookReview(incoming(), request.auth.uid)
@@ -212,6 +240,7 @@ service cloud.firestore {
           && incoming().keys().size() >= 7
           && incoming().keys().size() <= 8;
         allow update: if isSignedIn()
+          && isNotBanned()
           && isValidId(bookId)
           && isValidId(reviewId)
           && resource.data.userId == request.auth.uid
@@ -226,6 +255,7 @@ service cloud.firestore {
           && incoming().keys().size() >= 7
           && incoming().keys().size() <= 8;
         allow delete: if isSignedIn()
+          && isNotBanned()
           && isValidId(bookId)
           && isValidId(reviewId)
           && resource.data.userId == request.auth.uid;
@@ -287,7 +317,8 @@ service cloud.firestore {
           && isValidId(bookId)
           && isValidBookProgress(incoming(), userId)
           && incoming().keys().hasAll(['bookId', 'userId', 'readProgress', 'listenProgress', 'lastUpdated'])
-          && incoming().keys().size() == 5;
+          && incoming().keys().size() >= 5
+          && incoming().keys().size() <= 7;
 
         // Update: Validated schema, correct ownership, immutable bookId and userId, proper timestamp
         allow update: if isOwner(userId)
@@ -297,7 +328,8 @@ service cloud.firestore {
           && incoming().bookId == resource.data.bookId
           && incoming().userId == resource.data.userId
           && incoming().keys().hasAll(['bookId', 'userId', 'readProgress', 'listenProgress', 'lastUpdated'])
-          && incoming().keys().size() == 5;
+          && incoming().keys().size() >= 5
+          && incoming().keys().size() <= 7;
 
         // Delete: Only the owner can delete their book progress
         allow delete: if isOwner(userId)

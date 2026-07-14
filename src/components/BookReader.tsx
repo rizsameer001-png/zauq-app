@@ -3,7 +3,7 @@ import {
   X, BookOpen, ChevronLeft, ChevronRight, Download, Bookmark, 
   Settings, Type, Star, HelpCircle, Save, Trash2, Edit3, 
   RotateCcw, Play, Pause, RefreshCw, Layers, Sparkles, BookMarked,
-  ExternalLink, ZoomIn, ZoomOut
+  ExternalLink, ZoomIn, ZoomOut, Maximize2, Minimize2, Eye, EyeOff
 } from "lucide-react";
 import { Book, BookFile, BookProgress, Sher } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -244,6 +244,35 @@ export default function BookReader({
   const [readingDirection, setReadingDirection] = useState<"rtl" | "ltr">("rtl");
   const [viewMode, setViewMode] = useState<"double" | "single">("double");
   const [flipDirection, setFlipDirection] = useState<number>(1);
+
+  // Fullscreen and Focus/Minimize States
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const toggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (err) {
+      console.warn("Fullscreen API blocked or unsupported. Toggling layout fullscreen.", err);
+      setIsFullscreen(!isFullscreen);
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   // Responsive window resize to adjust single vs spread page views
   useEffect(() => {
@@ -1034,82 +1063,137 @@ export default function BookReader({
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-950/95 z-50 flex items-center justify-center p-0 md:p-4 backdrop-blur-md">
+    <div 
+      ref={containerRef}
+      className={`fixed inset-0 bg-stone-950 z-50 flex items-center justify-center backdrop-blur-md transition-all duration-300 ${
+        isFullscreen ? "p-0" : "p-0 md:p-4"
+      }`}
+    >
       <motion.div 
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.98 }}
-        className="w-full h-full md:max-w-7xl md:h-[95vh] rounded-none md:rounded-3xl border border-stone-850 shadow-2xl overflow-hidden flex flex-col bg-stone-950"
+        className={`w-full h-full overflow-hidden flex flex-col bg-stone-950 transition-all duration-300 ${
+          isFullscreen 
+            ? "max-w-none h-screen rounded-none border-0" 
+            : "md:max-w-7xl md:h-[95vh] rounded-none md:rounded-3xl border border-stone-850 shadow-2xl"
+        }`}
       >
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-stone-900 bg-stone-950 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 flex-shrink-0">
-              <BookOpen className="w-5 h-5" />
+        {!isFocusMode && (
+          <div className="px-6 py-4 border-b border-stone-900 bg-stone-950 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 flex-shrink-0">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-amber-500 font-bold block">
+                  Zauq Adab Reader • {file.type.toUpperCase()} Mode
+                </span>
+                <h2 className="text-sm font-serif font-bold text-stone-100 truncate mt-0.5">
+                  {book.title}
+                </h2>
+              </div>
             </div>
-            <div className="min-w-0">
-              <span className="text-[9px] font-mono uppercase tracking-widest text-amber-500 font-bold block">
-                Zauq Adab Reader • {file.type.toUpperCase()} Mode
-              </span>
-              <h2 className="text-sm font-serif font-bold text-stone-100 truncate mt-0.5">
-                {book.title}
-              </h2>
+
+            <div className="flex items-center gap-2">
+              {/* Theme selector */}
+              <div className="flex items-center bg-stone-900/60 p-1 rounded-xl border border-stone-850">
+                {(["parchment", "sepia", "night", "charcoal"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setReadingTheme(t)}
+                    className={`w-7 h-7 rounded-lg text-xs font-mono capitalize transition-all ${
+                      readingTheme === t 
+                        ? "bg-amber-500 text-stone-950 font-bold shadow-md" 
+                        : "text-stone-400 hover:text-stone-200"
+                    }`}
+                    title={`${t} Theme`}
+                  >
+                    {t[0]}
+                  </button>
+                ))}
+              </div>
+
+              {/* Focus Mode button in header */}
+              <button
+                onClick={() => setIsFocusMode(true)}
+                className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-amber-500 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Focus Mode (Minimize side controls & header)"
+              >
+                <EyeOff className="w-4 h-4" />
+                <span className="hidden sm:inline text-[10px] font-mono">Focus</span>
+              </button>
+
+              {/* Fullscreen button in header */}
+              <button
+                onClick={toggleFullscreen}
+                className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-amber-500 transition-all flex items-center gap-1.5 cursor-pointer"
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                <span className="hidden sm:inline text-[10px] font-mono">Full</span>
+              </button>
+
+              <a
+                href={resolvedBlobUrl || file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-stone-200 transition-all flex items-center justify-center"
+                title="Open Document in New Tab"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+
+              <button
+                onClick={handleDownloadOriginal}
+                className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-stone-200 transition-all"
+                title="Download Original Document"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={onClose}
+                className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-rose-950/30 hover:border-rose-900 hover:text-rose-400 text-stone-400 transition-all cursor-pointer"
+                title="Close Reader"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            {/* Theme selector */}
-            <div className="flex items-center bg-stone-900/60 p-1 rounded-xl border border-stone-850">
-              {(["parchment", "sepia", "night", "charcoal"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setReadingTheme(t)}
-                  className={`w-7 h-7 rounded-lg text-xs font-mono capitalize transition-all ${
-                    readingTheme === t 
-                      ? "bg-amber-500 text-stone-950 font-bold shadow-md" 
-                      : "text-stone-400 hover:text-stone-200"
-                  }`}
-                  title={`${t} Theme`}
-                >
-                  {t[0]}
-                </button>
-              ))}
-            </div>
-
-            <a
-              href={resolvedBlobUrl || file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-stone-200 transition-all flex items-center justify-center"
-              title="Open Document in New Tab"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
-
-            <button
-              onClick={handleDownloadOriginal}
-              className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-stone-850 hover:border-stone-800 text-stone-400 hover:text-stone-200 transition-all"
-              title="Download Original Document"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={onClose}
-              className="p-2.5 rounded-xl bg-stone-900 border border-stone-850 hover:bg-rose-950/30 hover:border-rose-900 hover:text-rose-400 text-stone-400 transition-all cursor-pointer"
-              title="Close Reader"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Workspace Body */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           
           {/* Main Reading Canvas (Left/Center Pane) */}
-          <div className={`flex-1 flex flex-col items-stretch relative p-3 md:p-6 transition-colors duration-500 ${currentTheme.bg} overflow-hidden`}>
+          <div className={`flex-1 flex flex-col items-stretch relative transition-all duration-500 ${
+            isFocusMode ? "p-1 md:p-3" : "p-3 md:p-6"
+          } ${currentTheme.bg} overflow-hidden`}>
             
+            {/* Minimal absolute escape controls in Focus Mode */}
+            {isFocusMode && (
+              <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+                <button
+                  onClick={() => setIsFocusMode(false)}
+                  className="px-3 py-1.5 rounded-xl bg-stone-950/80 hover:bg-stone-900 border border-stone-850 text-amber-500 hover:text-amber-400 font-mono text-[10px] uppercase tracking-wider font-bold shadow-lg transition-all flex items-center gap-1.5 cursor-pointer backdrop-blur-md"
+                  title="Show Side Controls / Restore Normal Mode"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Normal Mode</span>
+                </button>
+                
+                <button
+                  onClick={onClose}
+                  className="p-2 rounded-xl bg-stone-950/80 hover:bg-rose-950/30 border border-stone-850 hover:border-rose-900 hover:text-rose-400 text-stone-400 transition-all shadow-lg cursor-pointer backdrop-blur-md"
+                  title="Close Reader"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Floating Reader Toolbar */}
             <div className="mx-auto bg-stone-950/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-stone-850 shadow-lg flex flex-wrap items-center justify-center gap-4 z-10 text-xs text-stone-300 font-mono select-none">
               <div className="flex items-center gap-1 bg-stone-900/90 px-2 py-1 rounded-xl border border-stone-800">
@@ -1179,6 +1263,31 @@ export default function BookReader({
                   </div>
                 </>
               )}
+
+              {/* View options (Focus / Fullscreen) */}
+              <div className="flex items-center gap-1 bg-stone-900/90 px-2 py-1 rounded-xl border border-stone-800">
+                <span className="text-[9px] text-stone-500 mr-1 uppercase font-bold">View:</span>
+                <button
+                  onClick={() => setIsFocusMode(!isFocusMode)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isFocusMode ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                  }`}
+                  title={isFocusMode ? "Normal Mode (Show sidebars and headers)" : "Focus Mode (Minimize all other controls)"}
+                >
+                  {isFocusMode ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <span>{isFocusMode ? "Normal" : "Focus"}</span>
+                </button>
+                <button
+                  onClick={toggleFullscreen}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isFullscreen ? "bg-amber-500 text-stone-950" : "text-stone-400 hover:text-stone-200"
+                  }`}
+                  title={isFullscreen ? "Exit Fullscreen Mode" : "Enter Fullscreen Mode"}
+                >
+                  {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  <span>{isFullscreen ? "Exit Full" : "Fullscreen"}</span>
+                </button>
+              </div>
             </div>
 
             {/* High fidelity Zoom controls */}
@@ -1219,7 +1328,7 @@ export default function BookReader({
                 /* Real 3D Book Page Flip Reader */
                 <div className="flex-1 flex flex-col justify-center items-center relative py-4 px-1 md:px-6 overflow-hidden select-none">
                   
-                  <div className="relative w-full max-w-5xl flex items-center justify-center p-2">
+                  <div className={`relative w-full ${isFocusMode ? "max-w-7xl" : "max-w-5xl"} flex items-center justify-center p-2 transition-all duration-300`}>
                     
                     {/* Outer Book Frame Wrapper with Perspective */}
                     <div 
@@ -1543,7 +1652,8 @@ export default function BookReader({
           </div>
 
           {/* Reading Companion Side Control panel (Right Pane) */}
-          <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l flex flex-col justify-between overflow-y-auto shrink-0 transition-colors duration-500 ${currentTheme.sidebar}`}>
+          {!isFocusMode && (
+            <div className={`w-full lg:w-96 border-t lg:border-t-0 lg:border-l flex flex-col justify-between overflow-y-auto shrink-0 transition-colors duration-500 ${currentTheme.sidebar}`}>
             
             <div>
               {/* Tab Selector */}
@@ -2130,6 +2240,7 @@ export default function BookReader({
             </div>
 
           </div>
+          )}
 
         </div>
       </motion.div>

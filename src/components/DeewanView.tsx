@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Search, BookOpen, Quote, Sparkles, Feather, Heart, FileText, ChevronRight, Share2, Copy, Trash2, Check, Volume2, History, Download, Palette, Type, Star } from "lucide-react";
+import { Search, BookOpen, Quote, Sparkles, Feather, Heart, FileText, ChevronRight, Share2, Copy, Trash2, Check, Volume2, History, Download, Palette, Type, Star, Globe } from "lucide-react";
 import { CURATED_GHAZALS, CLASSIC_POETS } from "../data";
 import PoetTimeline, { getPoetEra } from "./PoetTimeline";
 import { Sher, Ghazal, Book } from "../types";
@@ -9,6 +9,7 @@ import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { getMediaFile } from "../mediaDb";
+import SherInterpretationModal from "./SherInterpretationModal";
 
 // Memory-safe dynamic image loader for local or remote files
 const LocalMediaImage = ({ 
@@ -107,6 +108,7 @@ export default function DeewanView({
   const [selectedGhazalState, setSelectedGhazalState] = useState<Ghazal | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedSherId, setCopiedSherId] = useState<string | null>(null);
+  const [interpretationSher, setInterpretationSher] = useState<Sher | null>(null);
 
   // Focus initial poet/ghazal passed via prop from global search
   useEffect(() => {
@@ -1025,6 +1027,18 @@ export default function DeewanView({
                     <span>Export</span>
                   </button>
 
+                  <button
+                    onClick={() => {
+                      interactWithSher(selectedSavedSher);
+                      setInterpretationSher(selectedSavedSher);
+                    }}
+                    className="p-2 rounded-lg bg-stone-900 text-stone-400 hover:text-amber-300 hover:bg-stone-950 border border-transparent hover:border-amber-900/40 transition-all text-[11px] flex items-center gap-1 cursor-pointer"
+                    title="Consult Gemini AI Poetic Tafseer / Interpretation"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>AI Tafseer</span>
+                  </button>
+
                   {onRemoveSher && (
                     <button
                       onClick={() => {
@@ -1336,6 +1350,20 @@ export default function DeewanView({
                         <span>{copiedSherId === sher.id ? "Copied" : "Copy"}</span>
                       </button>
 
+                      {/* AI Interpretation */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          interactWithSher(sher);
+                          setInterpretationSher(sher);
+                        }}
+                        className="p-2 rounded-lg bg-stone-900 text-stone-400 hover:text-amber-300 hover:bg-stone-950 border border-transparent hover:border-amber-900/40 transition-all text-[11px] flex items-center gap-1 cursor-pointer"
+                        title="Consult Gemini AI Poetic Tafseer / Interpretation"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>AI Tafseer</span>
+                      </button>
+
                       {/* Design Card */}
                       <button
                         onClick={(e) => {
@@ -1632,6 +1660,17 @@ export default function DeewanView({
             </div>
           </motion.div>
         </div>
+      )}
+    </AnimatePresence>
+
+    {/* Sher AI Interpretation Modal */}
+    <AnimatePresence>
+      {interpretationSher && (
+        <SherInterpretationModal
+          sher={interpretationSher}
+          onClose={() => setInterpretationSher(null)}
+          triggerToast={(msg) => console.log(msg)}
+        />
       )}
     </AnimatePresence>
   </div>

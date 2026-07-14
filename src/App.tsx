@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText } from "lucide-react";
+import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText, ShieldAlert } from "lucide-react";
 import DeewanView from "./components/DeewanView";
 import { makeUrlRelative } from "./utils/url";
 import BeitBaziView from "./components/BeitBaziView";
@@ -19,7 +19,7 @@ import { STARTER_SHERS, CLASSIC_POETS, CURATED_GHAZALS, STARTER_VIDEOS, STARTER_
 import { motion, AnimatePresence } from "motion/react";
 
 // Firebase integration
-import { auth, db, googleProvider, OperationType, handleFirestoreError, testConnection } from "./firebase";
+import { auth, db, googleProvider, OperationType, handleFirestoreError, testConnection, logUserActivity } from "./firebase";
 import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, getDocs } from "firebase/firestore";
 
@@ -81,6 +81,12 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
+  // Security & Ban States
+  const [appUserLoginAllowed, setAppUserLoginAllowed] = useState<boolean>(true);
+  const [currentUserIsBanned, setCurrentUserIsBanned] = useState<boolean>(false);
+  const [currentUserBanReason, setCurrentUserBanReason] = useState<string>("");
 
   // Dynamic Branding Settings (overridden by admin global_config)
   const [globalTheme, setGlobalTheme] = useState<string>("midnight");
@@ -104,10 +110,12 @@ export default function App() {
         if (data.logoText) setGlobalLogoText(data.logoText);
         if (data.logoSubtitle) setGlobalLogoSubtitle(data.logoSubtitle);
         setGlobalLogoUrl(makeUrlRelative(data.logoUrl || ""));
+        setLogoError(false);
         if (data.bannerHeading) setGlobalBannerHeading(data.bannerHeading);
         setGlobalBannerTagline(data.bannerTagline || "");
         setGlobalBannerImageUrl(makeUrlRelative(data.bannerImageUrl || ""));
         if (data.bannerLink) setGlobalBannerLink(data.bannerLink);
+        setAppUserLoginAllowed(data.userLoginAllowed !== undefined ? data.userLoginAllowed : true);
       }
     }, (err) => {
       console.error("Error watching global config:", err);
@@ -264,6 +272,60 @@ For any inquiries regarding your data or to request account deletion, please con
   // Auth states
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Check if current user is banned or user logins are disabled
+  useEffect(() => {
+    if (!user) {
+      setCurrentUserIsBanned(false);
+      setCurrentUserBanReason("");
+      return;
+    }
+
+    // Admin is never banned
+    if (user.email === "amancib007@gmail.com") {
+      setCurrentUserIsBanned(false);
+      setCurrentUserBanReason("");
+      return;
+    }
+
+    // 1. Check if user logins are globally disabled and this is not admin
+    if (!appUserLoginAllowed) {
+      setCurrentUserIsBanned(true);
+      setCurrentUserBanReason("Logins for standard users have been temporarily disabled by the Administrator.");
+      return;
+    }
+
+    // 2. Setup subscription to check if this user is in banned_users (by UID or by Email)
+    const uidRef = doc(db, "banned_users", user.uid);
+    const unsubUid = onSnapshot(uidRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setCurrentUserIsBanned(true);
+        setCurrentUserBanReason(docSnap.data().reason || "Wrong activity detected.");
+      } else {
+        // Also check by email if we have it
+        if (user.email) {
+          const emailRef = doc(db, "banned_users", user.email.toLowerCase());
+          const unsubEmail = onSnapshot(emailRef, (emailSnap) => {
+            if (emailSnap.exists()) {
+              setCurrentUserIsBanned(true);
+              setCurrentUserBanReason(emailSnap.data().reason || "Wrong activity detected.");
+            } else {
+              setCurrentUserIsBanned(false);
+              setCurrentUserBanReason("");
+            }
+          }, (err) => console.error("Error checking email ban:", err));
+          return () => unsubEmail();
+        } else {
+          setCurrentUserIsBanned(false);
+          setCurrentUserBanReason("");
+        }
+      }
+    }, (err) => {
+      console.error("Error checking uid ban:", err);
+    });
+
+    return () => unsubUid();
+  }, [user, appUserLoginAllowed]);
 
   // Global search query and focus states
   const [globalSearch, setGlobalSearch] = useState("");
@@ -748,6 +810,7 @@ For any inquiries regarding your data or to request account deletion, please con
           userId: user.uid,
           createdAt: serverTimestamp(),
         });
+        logUserActivity("save_sher", `Saved sher by ${sher.poet || "Unknown"}: "${sher.urdu.substring(0, 40)}..."`);
         triggerToast("Sher saved to your cloud Deewan! ☁️✨");
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, collectionPath);
@@ -764,6 +827,7 @@ For any inquiries regarding your data or to request account deletion, please con
       const collectionPath = `users/${user.uid}/saved_shers`;
       try {
         await deleteDoc(doc(db, collectionPath, id));
+        logUserActivity("delete_sher", `Deleted saved sher ID ${id}`);
         triggerToast("Sher removed from your cloud notebook.");
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, collectionPath);
@@ -790,6 +854,7 @@ For any inquiries regarding your data or to request account deletion, please con
           userId: user.uid,
           createdAt: serverTimestamp(),
         });
+        logUserActivity("save_sher", `Added custom composition: "${sher.urdu.substring(0, 40)}..."`);
         triggerToast("Composition saved to cloud! ✍️☁️");
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, collectionPath);
@@ -816,6 +881,7 @@ For any inquiries regarding your data or to request account deletion, please con
           userId: user.uid,
           createdAt: serverTimestamp(),
         });
+        logUserActivity("save_sher", `Saved customized card sher: "${sher.urdu.substring(0, 40)}..."`);
         triggerToast("Designed card composition saved to cloud! 🎨☁️");
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, collectionPath);
@@ -835,8 +901,15 @@ For any inquiries regarding your data or to request account deletion, please con
 
   const handleSignIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
       triggerToast("Successfully connected via Google! Welcome to Zauq. ✨");
+      if (result.user) {
+        logUserActivity("login", "User authenticated successfully via Google", {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName
+        });
+      }
     } catch (error) {
       console.error("Sign in error:", error);
       triggerToast("Authentication failed. Please try again.");
@@ -853,8 +926,61 @@ For any inquiries regarding your data or to request account deletion, please con
     }
   };
 
+  const handleBannedSignOut = async () => {
+    try {
+      await signOut(auth);
+      setCurrentUserIsBanned(false);
+      setCurrentUserBanReason("");
+      triggerToast("Disconnected successfully.");
+    } catch (error) {
+      console.error("Banned sign out error:", error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans pb-24 relative selection:bg-amber-500/30 selection:text-amber-200">
+      {/* Absolute Full Screen Ban Overlay */}
+      {currentUserIsBanned && (
+        <div className="fixed inset-0 z-[1000] bg-stone-950 flex flex-col items-center justify-center p-6 text-center select-none">
+          <div className="absolute inset-0 bg-radial-gradient from-rose-950/20 via-stone-950/80 to-stone-950 pointer-events-none" />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-stone-900/40 border border-stone-800/80 p-8 md:p-12 rounded-[2.5rem] max-w-lg w-full flex flex-col items-center gap-6 backdrop-blur-xl shadow-2xl"
+          >
+            <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center animate-pulse">
+              <ShieldAlert className="w-8 h-8 text-rose-500" />
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <h2 className="text-xl md:text-2xl font-serif font-bold text-rose-400">
+                Access Restriction Active
+              </h2>
+              <p className="text-stone-500 text-xs font-mono tracking-widest uppercase">
+                Zauq Security Gatekeeper
+              </p>
+            </div>
+
+            <div className="bg-stone-950/80 border border-stone-900/60 p-5 rounded-2xl text-left text-xs text-stone-300 font-sans leading-relaxed w-full">
+              <span className="text-[10px] text-stone-500 font-mono uppercase block mb-1">Reason for Restriction:</span>
+              <p>{currentUserBanReason || "Suspicious or wrong activity visible. Your access has been restricted by the Administrator."}</p>
+            </div>
+
+            <p className="text-[10px] text-stone-500 leading-normal">
+              If you believe this is an error, please contact the primary administrator at <span className="text-amber-300 font-semibold font-mono">amancib007@gmail.com</span> with your Google user details.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleBannedSignOut}
+              className="mt-2 w-full py-3 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-mono font-bold uppercase tracking-widest border border-stone-700 transition-all cursor-pointer hover:border-stone-600"
+            >
+              Disconnect & Exit
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {/* Decorative Golden Ambient Background Dusts */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-amber-500/[0.02] rounded-full blur-[150px] pointer-events-none" />
       <div className="absolute top-1/3 right-10 w-[400px] h-[400px] bg-amber-600/[0.01] rounded-full blur-[120px] pointer-events-none" />
@@ -873,16 +999,19 @@ For any inquiries regarding your data or to request account deletion, please con
           className="flex items-center gap-2.5 cursor-pointer select-none group flex-shrink-0"
           id="zauq-branding-logo"
         >
-          {globalLogoUrl ? (
-            <img 
-              src={globalLogoUrl} 
-              alt="Brand Logo" 
-              className="w-8.5 h-8.5 object-contain flex-shrink-0 aspect-square rounded-lg border border-amber-500/20 shadow-sm transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <ZauqLogo className="w-8.5 h-8.5" />
-          )}
+          <div className="w-9 h-9 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {globalLogoUrl && !logoError ? (
+              <img 
+                src={globalLogoUrl} 
+                alt="Brand Logo" 
+                onError={() => setLogoError(true)}
+                className="w-full h-full object-contain aspect-square rounded-lg border border-amber-500/20 shadow-sm transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <ZauqLogo className="w-full h-full" />
+            )}
+          </div>
           <div className="flex flex-col justify-center">
             <div className="flex items-center gap-1.5">
               <span className="font-display text-base md:text-lg font-bold text-amber-500 tracking-widest leading-none group-hover:text-amber-400 transition-colors uppercase">
@@ -1195,16 +1324,19 @@ For any inquiries regarding your data or to request account deletion, please con
             >
               <div className="flex items-center justify-between border-b border-stone-900 pb-3">
                 <div className="flex items-center gap-2 group cursor-pointer flex-shrink-0">
-                  {globalLogoUrl ? (
-                    <img 
-                      src={globalLogoUrl} 
-                      alt="Brand Logo" 
-                      className="w-7 h-7 object-contain flex-shrink-0 aspect-square rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <ZauqLogo className="w-7 h-7" />
-                  )}
+                  <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {globalLogoUrl && !logoError ? (
+                      <img 
+                        src={globalLogoUrl} 
+                        alt="Brand Logo" 
+                        onError={() => setLogoError(true)}
+                        className="w-full h-full object-contain aspect-square rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <ZauqLogo className="w-full h-full" />
+                    )}
+                  </div>
                   <span className="font-display text-base font-bold text-amber-500 tracking-wider uppercase leading-none">
                     {globalLogoText || "ZAUQ"}
                   </span>
@@ -1568,16 +1700,19 @@ For any inquiries regarding your data or to request account deletion, please con
             {/* Column 1: App Info */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 group cursor-pointer">
-                {globalLogoUrl ? (
-                  <img 
-                    src={globalLogoUrl} 
-                    alt="Brand Logo" 
-                    className="w-7 h-7 object-contain rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <ZauqLogo className="w-7 h-7" />
-                )}
+                <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {globalLogoUrl && !logoError ? (
+                    <img 
+                      src={globalLogoUrl} 
+                      alt="Brand Logo" 
+                      onError={() => setLogoError(true)}
+                      className="w-full h-full object-contain aspect-square rounded-md border border-amber-500/20 transition-all duration-1000 ease-in-out group-hover:rotate-[360deg] transform hover:scale-105" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <ZauqLogo className="w-full h-full" />
+                  )}
+                </div>
                 <span className="font-display text-sm font-semibold text-amber-500 tracking-widest uppercase">
                   {globalLogoText || "ZAUQ"}
                 </span>

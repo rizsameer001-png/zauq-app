@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zauq - Urdu Literary Lounge</title>
+    <script type="module" crossorigin src="/assets/index-465GjqgV.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DTQQMWEi.css">
+  </head>
+  <body>
+    <script>
+      (function() {
+        try {
+          var theme = localStorage.getItem("zauq_theme") || "midnight";
+          if (theme !== "midnight") {
+            document.body.classList.add("theme-" + theme);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <div id="root"></div>
+  </body>
+</html>
+
