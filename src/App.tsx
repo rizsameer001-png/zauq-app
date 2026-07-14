@@ -1544,7 +1544,7 @@ For any inquiries regarding your data or to request account deletion, please con
               <div className="h-px w-36 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent my-6" />
 
               <p className="text-sm md:text-base lg:text-lg text-stone-400 leading-relaxed font-serif max-w-2xl italic mb-8">
-                {globalBannerTagline || "Welcome to your courtly sanctuary. Dive into our live curated anthology of classical masters, test your literary wit in real-time AI verse battles, craft designed quote cards, or meditate to the gentle background drone of the Tanpura."}
+                {globalBannerTagline || "The elegance of tradition, reimagined with modern thought.The magic of words, powered by AI.Zauq- adab, redefined."}
               </p>
 
               {globalBannerLink && globalBannerLink !== "deewan" && (
