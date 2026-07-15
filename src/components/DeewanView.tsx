@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Search, BookOpen, Quote, Sparkles, Feather, Heart, FileText, ChevronRight, Share2, Copy, Trash2, Check, Volume2, History, Download, Palette, Type, Star, Globe } from "lucide-react";
+import { Search, BookOpen, Quote, Sparkles, Feather, Heart, FileText, ChevronRight, Share2, Copy, Trash2, Check, Volume2, History, Download, Palette, Type, Star, Globe, Eye, EyeOff, ChevronLeft } from "lucide-react";
 import { CURATED_GHAZALS, CLASSIC_POETS } from "../data";
 import PoetTimeline, { getPoetEra } from "./PoetTimeline";
 import { Sher, Ghazal, Book } from "../types";
@@ -82,6 +82,8 @@ interface DeewanViewProps {
   initialGhazal?: Ghazal | null;
   onClearInitialPoet?: () => void;
   onClearInitialGhazal?: () => void;
+  isFocusMode?: boolean;
+  onToggleFocusMode?: (val: boolean) => void;
 }
 
 export default function DeewanView({ 
@@ -98,7 +100,9 @@ export default function DeewanView({
   initialPoet,
   initialGhazal,
   onClearInitialPoet,
-  onClearInitialGhazal
+  onClearInitialGhazal,
+  isFocusMode = false,
+  onToggleFocusMode
 }: DeewanViewProps) {
   const [activeSection, setActiveSection] = useState<"anthology" | "saved">("anthology");
   const [selectedSavedSher, setSelectedSavedSher] = useState<Sher | null>(null);
@@ -599,7 +603,7 @@ export default function DeewanView({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8" id="zauq-deewan-explorer">
       {/* Sidebar: Poet filter and Ghazal list */}
-      <div className="lg:col-span-4 flex flex-col gap-6">
+      <div className={`lg:col-span-4 flex flex-col gap-6 ${isFocusMode && selectedGhazal ? "hidden" : ""}`}>
         {/* Toggle between Anthology and Saved Shers */}
         <div className="grid grid-cols-2 p-1 bg-stone-950/80 border border-stone-900 rounded-2xl">
           <button
@@ -916,7 +920,7 @@ export default function DeewanView({
       </div>
 
       {/* Main Panel: Reading Stage */}
-      <div className="lg:col-span-8 flex flex-col gap-6">
+      <div className={`${isFocusMode && selectedGhazal ? "lg:col-span-12" : "lg:col-span-8"} flex flex-col gap-6`}>
         {activeSection === "saved" ? (
           selectedSavedSher ? (
             <motion.div
@@ -1187,6 +1191,36 @@ export default function DeewanView({
             <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-amber-500/20 rounded-tr pointer-events-none" />
             <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-amber-500/20 rounded-bl pointer-events-none" />
             <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-amber-500/20 rounded-br pointer-events-none" />
+
+            {/* Top Reader Navigation & Focus bar */}
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-stone-900/40 relative z-10" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => {
+                  setSelectedGhazalState(null);
+                  if (onToggleFocusMode) onToggleFocusMode(false);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono uppercase tracking-wider text-stone-400 hover:text-amber-400 hover:bg-stone-900/40 transition-all cursor-pointer"
+                title="Back to Ghazal list"
+              >
+                <ChevronLeft className="w-4 h-4 text-amber-500/70" />
+                <span>Back to List</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onToggleFocusMode) onToggleFocusMode(!isFocusMode);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+                  isFocusMode 
+                    ? "bg-amber-500/10 text-amber-300 border border-amber-500/25 hover:bg-amber-500/20"
+                    : "text-stone-400 hover:text-amber-400 hover:bg-stone-900/40"
+                }`}
+                title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode (hides navigation, footer, and sidebar)"}
+              >
+                {isFocusMode ? <EyeOff className="w-4 h-4 text-amber-500" /> : <Eye className="w-4 h-4 text-amber-500/70" />}
+                <span>{isFocusMode ? "Focus On" : "Focus Mode"}</span>
+              </button>
+            </div>
 
             {/* Ghazal Header */}
             <div className="text-center max-w-2xl mx-auto mb-8 pb-6 border-b border-stone-900/60 flex flex-col gap-3">

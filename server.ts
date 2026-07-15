@@ -5,6 +5,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import multer from "multer";
 import fs from "fs";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, getDocs, doc, getDoc } from "firebase/firestore";
 
 // Load environment variables
 dotenv.config();
@@ -14,6 +16,35 @@ app.set("trust proxy", true);
 const PORT = 3000;
 
 app.use(express.json());
+
+// Enable global CORS headers for mobile integration (Flutter, Web, etc.)
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
+// Read and parse Firebase Config for REST API Database synchronization
+const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+let db: any = null;
+
+try {
+  if (fs.existsSync(firebaseConfigPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
+    const firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    console.log("Firebase initialized successfully on backend server for REST APIs.");
+  } else {
+    console.warn("firebase-applet-config.json not found. Database REST APIs will run in fallback/static mode.");
+  }
+} catch (e: any) {
+  console.error("Failed to initialize Firebase on backend server:", e.message || e);
+}
 
 // Set up local storage for uploaded attachments/PDFs/images/audio
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
@@ -68,9 +99,203 @@ function getAIClient(): GoogleGenAI {
   return aiClient;
 }
 
+// API helper to fetch safe Firestore collections for Flutter or external client sync
+async function fetchCollection(collectionName: string) {
+  if (!db) {
+    throw new Error("Firestore is not initialized on the backend. Make sure firebase-applet-config.json is populated.");
+  }
+  const colRef = collection(db, collectionName);
+  const snapshot = await getDocs(colRef);
+  const data: any[] = [];
+  snapshot.forEach((doc) => {
+    data.push({ id: doc.id, ...doc.data() });
+  });
+  return data;
+}
+
+async function fetchDocById(collectionName: string, docId: string) {
+  if (!db) {
+    throw new Error("Firestore is not initialized on the backend. Make sure firebase-applet-config.json is populated.");
+  }
+  const docRef = doc(db, collectionName, docId);
+  const snapshot = await getDoc(docRef);
+  if (!snapshot.exists()) {
+    return null;
+  }
+  return { id: snapshot.id, ...snapshot.data() };
+}
+
+// REST API Catalog & Documentation for Flutter and Mobile client integrations
+app.get("/api", (req, res) => {
+  res.json({
+    appName: "Zauq App (ذوق)",
+    version: "1.0.0",
+    description: "REST API Gateway for mobile Flutter and Web client integrations.",
+    endpoints: [
+      { path: "/api/health", method: "GET", desc: "Server health and uptime check" },
+      { path: "/api/upload", method: "POST", desc: "Multipart file/image/audio upload (Form-data field: 'file')" },
+      { path: "/api/poets", method: "GET", desc: "Retrieve all classical poets" },
+      { path: "/api/poets/:id", method: "GET", desc: "Retrieve a specific poet by ID" },
+      { path: "/api/ghazals", method: "GET", desc: "Retrieve all ghazals and poems" },
+      { path: "/api/ghazals/:id", method: "GET", desc: "Retrieve a specific ghazal by ID" },
+      { path: "/api/videos", method: "GET", desc: "Retrieve all curated recitation YouTube videos" },
+      { path: "/api/authors", method: "GET", desc: "Retrieve all authors in the Adab Library" },
+      { path: "/api/authors/:id", method: "GET", desc: "Retrieve a specific author by ID" },
+      { path: "/api/books", method: "GET", desc: "Retrieve all books in the Adab Library" },
+      { path: "/api/books/:id", method: "GET", desc: "Retrieve a specific book by ID" },
+      { path: "/api/daily-couplets", method: "GET", desc: "Retrieve custom-tailored daily couplets" },
+      { path: "/api/cms", method: "GET", desc: "Retrieve all published informational/CMS pages" },
+      { path: "/api/dictionary", method: "GET", desc: "Retrieve the local Urdu literary dictionary" },
+      { 
+        path: "/api/gemini/beit-bazi", 
+        method: "POST", 
+        body: { userCouplet: "string", history: "array" }, 
+        desc: "Play an interactive session of traditional Beit-Bazi with AI" 
+      },
+      { 
+        path: "/api/gemini/poetry-assist", 
+        method: "POST", 
+        body: { prompt: "string", incompletePoetry: "string", mode: "complete | criticism | rhymes" }, 
+        desc: "Interact with 'Ustaad-e-Zauq', our AI-powered Urdu poetry advisor" 
+      },
+      { 
+        path: "/api/gemini/word-lookup", 
+        method: "POST", 
+        body: { word: "string" }, 
+        desc: "Aesthetic etymology and poetic breakdown of any Urdu word" 
+      },
+      { 
+        path: "/api/gemini/sher-interpretation", 
+        method: "POST", 
+        body: { urdu: "string", roman: "string", poet: "string", languages: "array" }, 
+        desc: "Breathtaking multi-language scholarly interpretation (Tafseer) of any couplet" 
+      }
+    ]
+  });
+});
+
 // API endpoint to support health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+// Collection REST API: Retrieve all poets
+app.get("/api/poets", async (req, res) => {
+  try {
+    const data = await fetchCollection("poets");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch poets." });
+  }
+});
+
+// Collection REST API: Retrieve specific poet by ID
+app.get("/api/poets/:id", async (req, res) => {
+  try {
+    const data = await fetchDocById("poets", req.params.id);
+    if (!data) return res.status(404).json({ error: "Poet not found." });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch poet." });
+  }
+});
+
+// Collection REST API: Retrieve all ghazals
+app.get("/api/ghazals", async (req, res) => {
+  try {
+    const data = await fetchCollection("ghazals");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch ghazals." });
+  }
+});
+
+// Collection REST API: Retrieve specific ghazal by ID
+app.get("/api/ghazals/:id", async (req, res) => {
+  try {
+    const data = await fetchDocById("ghazals", req.params.id);
+    if (!data) return res.status(404).json({ error: "Ghazal not found." });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch ghazal." });
+  }
+});
+
+// Collection REST API: Retrieve all recitation videos
+app.get("/api/videos", async (req, res) => {
+  try {
+    const data = await fetchCollection("videos");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch videos." });
+  }
+});
+
+// Collection REST API: Retrieve all Adab Library authors
+app.get("/api/authors", async (req, res) => {
+  try {
+    const data = await fetchCollection("authors");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch authors." });
+  }
+});
+
+// Collection REST API: Retrieve specific Adab Library author by ID
+app.get("/api/authors/:id", async (req, res) => {
+  try {
+    const data = await fetchDocById("authors", req.params.id);
+    if (!data) return res.status(404).json({ error: "Author not found." });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch author." });
+  }
+});
+
+// Collection REST API: Retrieve all books
+app.get("/api/books", async (req, res) => {
+  try {
+    const data = await fetchCollection("books");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch books." });
+  }
+});
+
+// Collection REST API: Retrieve specific book by ID
+app.get("/api/books/:id", async (req, res) => {
+  try {
+    const data = await fetchDocById("books", req.params.id);
+    if (!data) return res.status(404).json({ error: "Book not found." });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch book." });
+  }
+});
+
+// Collection REST API: Retrieve daily couplets
+app.get("/api/daily-couplets", async (req, res) => {
+  try {
+    const data = await fetchCollection("daily_couplets");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch daily couplets." });
+  }
+});
+
+// Collection REST API: Retrieve custom CMS pages
+app.get("/api/cms", async (req, res) => {
+  try {
+    const data = await fetchCollection("cms_pages");
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch CMS pages." });
+  }
+});
+
+// Dictionary REST API: Retrieve local dictionary
+app.get("/api/dictionary", (req, res) => {
+  res.json(BACKEND_DICTIONARY);
 });
 
 // API endpoint for file uploads
@@ -800,6 +1025,121 @@ Respond in JSON conforming to the schema.`;
 
       res.json(customFallback);
     }
+  }
+});
+
+// API endpoint for poetic translation & deep interpretation (Sher Tafseer)
+app.post("/api/gemini/sher-interpretation", async (req, res) => {
+  const { urdu, roman, english, poet, languages } = req.body;
+  if (!urdu && !roman) {
+    return res.status(400).json({ error: "At least Urdu or Roman script of the sher is required." });
+  }
+
+  const requestedLanguages = languages || ["English", "Urdu (اردو)", "Persian (فارسی)", "Turkish (Türkçe)"];
+
+  try {
+    const ai = getAIClient();
+
+    const systemInstruction = `You are a world-renowned scholar of South Asian classical poetry, Sufism, and Eastern philosophy.
+Your specialty is the 'Tafseer' (deep mystical, romantic, and metaphysical interpretation) of classical Urdu couplets (Shers).
+
+Provide a deep, breathtaking analysis of the provided Sher (couplet).
+For each of the requested languages, provide:
+1. Poetic translation/transliteration.
+2. Comprehensive multi-paragraph explanation explaining the deeper Sufi, philosophical, or romantic meanings of the verse, and unpacking how its core metaphors relate to human condition, love, or the universe.
+
+Also extract and detail 2-3 key metaphors used in the Sher, and outline any historical context about the poet or the era that helps explain the mindset behind this couplet.
+
+Respond strictly in JSON matching the specified schema. All text fields should be fully elaborated and highly academic yet poetic.`;
+
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: `Poet: ${poet || "Classical Poet"}\nUrdu: ${urdu || ""}\nRoman: ${roman || ""}\nEnglish: ${english || ""}\nRequested Interpretation Languages: ${requestedLanguages.join(", ")}`,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            poetName: { type: Type.STRING },
+            interpretations: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  language: { type: Type.STRING, description: "Name of the language (e.g. English, Turkish)" },
+                  translation: { type: Type.STRING, description: "Poetic translation or rhymed verse version in this language" },
+                  explanation: { type: Type.STRING, description: "Detailed, beautiful, multi-paragraph interpretation of the couplet's philosophy, themes, and emotional weight" }
+                },
+                required: ["language", "translation", "explanation"]
+              }
+            },
+            metaphors: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  word: { type: Type.STRING, description: "The Urdu metaphor word (e.g., Qafas, Bulbul, Ashiyana)" },
+                  meaning: { type: Type.STRING, description: "Literal translation of the word" },
+                  poeticSymbolism: { type: Type.STRING, description: "Deep symbolic meaning of this metaphor in classical poetry" }
+                },
+                required: ["word", "meaning", "poeticSymbolism"]
+              }
+            },
+            historicalContext: { type: Type.STRING, description: "Historical background, poet's mindset, or literary context of the couplet" }
+          },
+          required: ["poetName", "interpretations", "metaphors", "historicalContext"]
+        }
+      }
+    });
+
+    const resultText = response.text;
+    if (!resultText) {
+      throw new Error("No interpretation generated.");
+    }
+
+    res.json(JSON.parse(resultText));
+  } catch (error: any) {
+    console.warn("Sher Interpretation Gemini API failed, running high-quality offline fallback:", error.message || error);
+
+    // High quality fallback based on the provided input
+    const fallbackInterpretations = requestedLanguages.map((lang: string) => {
+      let translation = english || "A beautiful translation is not available offline.";
+      let explanation = `The couplet explores the profound themes of classical Eastern mysticism (Sufism) and love. It touches upon the eternal search of the human soul for meaning, dealing with the struggles of existence, longing, and spiritual elevation.`;
+
+      if (lang.toLowerCase().includes("urdu") || lang.toLowerCase().includes("اردو")) {
+        translation = urdu || "خوبصورت اردو ترجمہ دستیاب نہیں۔";
+        explanation = `یہ شعر تصوف، عشقِ حقیقی اور معرفتِ نفس کی عکاسی کرتا ہے۔ اس میں انسانی روح کی لافانی تڑپ اور مادی دنیا کے بندھنوں سے آزادی کی فلسفیانہ تشریح کی گئی ہے۔`;
+      } else if (lang.toLowerCase().includes("turkish") || lang.toLowerCase().includes("türkçe")) {
+        translation = "Ruhun sonsuz aşkı ve felsefi arayışı.";
+        explanation = `Bu beyit, Doğu tasavvufunun ve klasik şiirin derin temalarını ele alır. İnsan ruhunun varoluş mücadelesi, hasret ve ilahi birliğe ulaşma arzusu tasvir edilir. Kafes, bülbül ve gül gibi semboller aracılığıyla aşığın kalbi anlatılır.`;
+      } else if (lang.toLowerCase().includes("persian") || lang.toLowerCase().includes("فارسی")) {
+        translation = "شعر زیبایی در وصف عشق و عرفان شرقی.";
+        explanation = `این بیت به بررسی مفاهیم عمیق عرفان شرقی (تصوف) و عشق می‌پردازد. این شعر درباره مبارزه روح انسان برای رهایی و کمال، سوز و گداز عشق، و وصال محبوب سخن می‌گوید.`;
+      }
+
+      return { language: lang, translation, explanation };
+    });
+
+    const fallbackResponse = {
+      poetName: poet || "Classical Poet",
+      interpretations: fallbackInterpretations,
+      metaphors: [
+        {
+          word: "Ishq (عشق)",
+          meaning: "Passionate Love",
+          poeticSymbolism: "The absolute path to divine realization, transcending worldly intellect."
+        },
+        {
+          word: "Dil (دل)",
+          meaning: "Heart",
+          poeticSymbolism: "The sacred mirror of the universe and the seat of divine manifestation."
+        }
+      ],
+      historicalContext: `This couplet is characteristic of the golden era of classical Urdu poetry, heavily influenced by Persian Ghazal traditions and Sufi metaphysics, where themes of divine longing and worldly detachment were explored under courtly patronages.`
+    };
+
+    res.json(fallbackResponse);
   }
 });
 

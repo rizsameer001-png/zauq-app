@@ -15,6 +15,20 @@ export function useLocalNotification(ghazals: Ghazal[]) {
     lastNotifiedDate: null
   });
 
+  // Synchronize config to Service Worker
+  const syncToServiceWorker = useCallback((newConfig: NotificationConfig) => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then((registration) => {
+        if (registration.active) {
+          registration.active.postMessage({
+            type: "SET_NOTIFICATION_CONFIG",
+            config: newConfig
+          });
+        }
+      });
+    }
+  }, []);
+
   // Load configuration and permissions
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -25,19 +39,37 @@ export function useLocalNotification(ghazals: Ghazal[]) {
       const stored = localStorage.getItem("zauq_notification_config");
       if (stored) {
         try {
-          setConfig(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          setConfig(parsed);
+          syncToServiceWorker(parsed);
         } catch (e) {
           console.error("Failed to parse notification config", e);
         }
       }
+
+      // Listen for message events from service worker (e.g. state syncing)
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === "SYNC_NOTIFICATION_CONFIG") {
+          setConfig(event.data.config);
+          localStorage.setItem("zauq_notification_config", JSON.stringify(event.data.config));
+        }
+      };
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.addEventListener("message", handleMessage);
+        return () => {
+          navigator.serviceWorker.removeEventListener("message", handleMessage);
+        };
+      }
     }
-  }, []);
+  }, [syncToServiceWorker]);
 
   // Save config to localStorage
   const saveConfig = useCallback((newConfig: NotificationConfig) => {
     setConfig(newConfig);
     localStorage.setItem("zauq_notification_config", JSON.stringify(newConfig));
-  }, []);
+    syncToServiceWorker(newConfig);
+  }, [syncToServiceWorker]);
 
   // Request browser notification permission
   const requestPermission = useCallback(async () => {
@@ -115,13 +147,20 @@ export function useLocalNotification(ghazals: Ghazal[]) {
 
   // Trigger test notification immediately
   const triggerTestNotification = useCallback(() => {
-    const todaySher = getTodaySher();
-    const title = "Zauq-e-Shayari • ذوق";
-    const body = todaySher 
-      ? `"${todaySher.roman || todaySher.urdu.substring(0, 45)}..." — ${todaySher.poet || "Classic Poet"}`
-      : "Your daily spiritual couplet is waiting for you. Tap to read now.";
-    
-    dispatchNotification(title, body);
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      // Trigger via Service Worker to emulate background/database fetched daily notifications
+      navigator.serviceWorker.controller.postMessage({
+        type: "TRIGGER_DAILY_SHER_TEST"
+      });
+    } else {
+      const todaySher = getTodaySher();
+      const title = "Zauq-e-Shayari • ذوق";
+      const body = todaySher 
+        ? `"${todaySher.roman || todaySher.urdu.substring(0, 45)}..." — ${todaySher.poet || "Classic Poet"}`
+        : "Your daily spiritual couplet is waiting for you. Tap to read now.";
+      
+      dispatchNotification(title, body);
+    }
   }, [getTodaySher, dispatchNotification]);
 
   // Scheduler interval to check and trigger the daily reminder

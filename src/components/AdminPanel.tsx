@@ -33,7 +33,9 @@ import {
   Clock,
   Palette,
   Type,
-  Activity
+  Activity,
+  Menu,
+  Edit3
 } from "lucide-react";
 import { Ghazal, Sher, ZauqVideo, Author, Book, CMSPage } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -67,7 +69,8 @@ export default function AdminPanel({
   onSignIn,
   triggerToast 
 }: AdminPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets" | "settings" | "cms" | "security">("ghazals");
+  const [activeSubTab, setActiveSubTab] = useState<"poets" | "ghazals" | "videos" | "authors" | "books" | "couplets" | "settings" | "cms" | "security" | "audit">("ghazals");
+  const [showMobileSidebar, setShowMobileSidebar] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Security & User Login States
@@ -1897,30 +1900,57 @@ For any inquiries regarding your data or to request account deletion, please con
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* LEFT COLUMN: NAVIGATION & DIRECTORY LIST */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            
-            {/* Header / Admin Info */}
-            <div className="bg-stone-900/30 p-5 rounded-2xl border border-stone-900 flex flex-col gap-2 relative overflow-hidden">
-              <div className="flex items-center gap-2.5">
-                <Settings className="w-4.5 h-4.5 text-amber-400" />
-                <h3 className="text-sm font-serif font-bold text-amber-200 uppercase tracking-wide">
-                  Content Administration
-                </h3>
-              </div>
-              <p className="text-[10px] text-stone-400 leading-normal">
-                {isAdmin ? (
-                  <span className="text-emerald-400 font-semibold">✓ Logged in as Primary Administrator ({user.email})</span>
-                ) : (
-                  <span className="text-amber-500/90 font-mono">⚠️ Dev Sandbox Mode • Full Create/Edit Permissions Allowed</span>
-                )}
-              </p>
+        <div className="flex flex-col gap-5 w-full">
+          {/* Responsive Mobile Toggle Navbar */}
+          <div className="flex lg:hidden items-center justify-between bg-stone-900/35 p-3.5 rounded-2xl border border-stone-900/60 w-full gap-3 backdrop-blur-md">
+            <button
+              onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-mono uppercase tracking-wider font-bold transition-all shadow-md cursor-pointer hover:bg-amber-500/25"
+            >
+              {showMobileSidebar ? (
+                <>
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editor View</span>
+                </>
+              ) : (
+                <>
+                  <Menu className="w-3.5 h-3.5" />
+                  <span>Menu Directory</span>
+                </>
+              )}
+            </button>
+            <div className="text-right">
+              <span className="text-[8px] font-mono uppercase tracking-widest text-stone-500 block">Gatekeeper Active Tab</span>
+              <span className="text-[11px] font-serif font-bold text-amber-200 capitalize">
+                {activeSubTab === "couplets" ? "Daily Couplets" : activeSubTab}
+              </span>
             </div>
+          </div>
 
-            {/* Sub-Tabs: Poets, Ghazals, Videos, Authors, Books, Couplets, Branding, CMS Pages, Security, or Audit Log */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-10 gap-1 p-1 bg-stone-950/80 border border-stone-900 rounded-2xl">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* LEFT COLUMN: NAVIGATION & DIRECTORY LIST */}
+            <div className={`lg:col-span-4 flex flex-col gap-6 ${showMobileSidebar ? "flex" : "hidden lg:flex"}`}>
+              
+              {/* Header / Admin Info */}
+              <div className="bg-stone-900/30 p-5 rounded-2xl border border-stone-900 flex flex-col gap-2 relative overflow-hidden">
+                <div className="flex items-center gap-2.5">
+                  <Settings className="w-4.5 h-4.5 text-amber-400" />
+                  <h3 className="text-sm font-serif font-bold text-amber-200 uppercase tracking-wide">
+                    Content Administration
+                  </h3>
+                </div>
+                <p className="text-[10px] text-stone-400 leading-normal">
+                  {isAdmin ? (
+                    <span className="text-emerald-400 font-semibold">✓ Logged in as Primary Administrator ({user.email})</span>
+                  ) : (
+                    <span className="text-amber-500/90 font-mono">⚠️ Dev Sandbox Mode • Full Create/Edit Permissions Allowed</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Sub-Tabs: Poets, Ghazals, Videos, Authors, Books, Couplets, Branding, CMS Pages, Security, or Audit Log */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-2 gap-1.5 p-1.5 bg-stone-950/80 border border-stone-900 rounded-2xl">
               <button
                 onClick={() => {
                   setActiveSubTab("ghazals");
@@ -2113,19 +2143,15 @@ For any inquiries regarding your data or to request account deletion, please con
                     : "Select Daily Couplet"}
                 </span>
                 <button
-                  onClick={
-                    activeSubTab === "poets" 
-                      ? handleInitNewPoet 
-                      : activeSubTab === "ghazals" 
-                      ? handleInitNewGhazal 
-                      : activeSubTab === "videos" 
-                      ? handleInitNewVideo 
-                      : activeSubTab === "authors" 
-                      ? handleInitNewAuthor 
-                      : activeSubTab === "books"
-                      ? handleInitNewBook
-                      : handleInitNewCouplet
-                  }
+                  onClick={() => {
+                    if (activeSubTab === "poets") handleInitNewPoet();
+                    else if (activeSubTab === "ghazals") handleInitNewGhazal();
+                    else if (activeSubTab === "videos") handleInitNewVideo();
+                    else if (activeSubTab === "authors") handleInitNewAuthor();
+                    else if (activeSubTab === "books") handleInitNewBook();
+                    else handleInitNewCouplet();
+                    setShowMobileSidebar(false);
+                  }}
                   className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 text-amber-400 text-[10px] font-mono uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all font-bold"
                 >
                   <Plus className="w-3 h-3" />
@@ -2143,7 +2169,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={p.id}
-                          onClick={() => handleSelectPoet(p)}
+                          onClick={() => {
+                            handleSelectPoet(p);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2174,7 +2203,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={g.id}
-                          onClick={() => handleSelectGhazal(g)}
+                          onClick={() => {
+                            handleSelectGhazal(g);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2205,7 +2237,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={auth.id}
-                          onClick={() => handleSelectAuthor(auth)}
+                          onClick={() => {
+                            handleSelectAuthor(auth);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2237,7 +2272,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={bk.id}
-                          onClick={() => handleSelectBook(bk)}
+                          onClick={() => {
+                            handleSelectBook(bk);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2268,7 +2306,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={c.id}
-                          onClick={() => handleSelectCouplet(c)}
+                          onClick={() => {
+                            handleSelectCouplet(c);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2299,7 +2340,10 @@ For any inquiries regarding your data or to request account deletion, please con
                       return (
                         <button
                           key={v.id}
-                          onClick={() => handleSelectVideo(v)}
+                          onClick={() => {
+                            handleSelectVideo(v);
+                            setShowMobileSidebar(false);
+                          }}
                           className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                             isSelected
                               ? "bg-amber-950/20 border-amber-500/30 text-amber-100 shadow-md"
@@ -2513,7 +2557,17 @@ For any inquiries regarding your data or to request account deletion, please con
           </div>
 
           {/* RIGHT COLUMN: RICH DETAIL EDITOR */}
-          <div className="lg:col-span-8">
+          <div className={`lg:col-span-8 ${!showMobileSidebar ? "block" : "hidden lg:block"}`}>
+            {!showMobileSidebar && (
+              <div className="lg:hidden mb-4">
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-950/80 border border-stone-900 text-stone-400 hover:text-stone-200 text-xs font-serif transition-all cursor-pointer"
+                >
+                  <span>← Back to Directory Menu</span>
+                </button>
+              </div>
+            )}
             <AnimatePresence mode="wait">
               
               {/* EDIT POET SUB-FORM */}
@@ -5915,6 +5969,7 @@ For any inquiries regarding your data or to request account deletion, please con
           </div>
 
         </div>
+      </div>
       )}
     </div>
   );

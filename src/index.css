@@ -228,3 +228,124 @@ body, div, header, main, section, button, p, h1, h2, h3, h4, h5, h6, span, a, in
   transition-duration: 300ms;
 }
 
+/* ==========================================
+   EXQUISITE RESPONSIVE MEDIA QUERY CORRECTIONS
+   ========================================== */
+
+/* Mobile */
+@media (max-width: 480px) {
+  #zauq-admin-panel {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    gap: 1.25rem !important;
+  }
+  .max-w-7xl {
+    max-width: 100% !important;
+  }
+  /* Typography fine-tuning to prevent overflows */
+  h2, .text-xl {
+    font-size: 1.15rem !important;
+  }
+  h3, .text-lg {
+    font-size: 1.05rem !important;
+  }
+  .text-base {
+    font-size: 0.95rem !important;
+  }
+  .text-sm {
+    font-size: 0.85rem !important;
+  }
+  /* Elegant Nastaliq size optimization for small displays */
+  .font-urdu, .font-nastaliq {
+    font-size: 1.5rem !important;
+    line-height: 2.8rem !important;
+  }
+  /* Form input padding */
+  input, textarea, select {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 11px !important;
+  }
+  /* Interactive items spacing */
+  .p-5 {
+    padding: 1.15rem !important;
+  }
+  .p-6 {
+    padding: 1.25rem !important;
+  }
+  .p-8 {
+    padding: 1.5rem !important;
+  }
+  .rounded-3xl {
+    border-radius: 1.25rem !important;
+  }
+}
+
+/* Mobile Landscape */
+@media (min-width: 481px) and (max-width: 767px) {
+  #zauq-admin-panel {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    gap: 1.5rem !important;
+  }
+  .font-urdu, .font-nastaliq {
+    font-size: 1.65rem !important;
+    line-height: 3rem !important;
+  }
+  input, textarea, select {
+    font-size: 12px !important;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  #zauq-admin-panel {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    gap: 1.75rem !important;
+  }
+  .font-urdu, .font-nastaliq {
+    font-size: 1.85rem !important;
+    line-height: 3.25rem !important;
+  }
+}
+
+/* Laptop */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  #zauq-admin-panel {
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+  }
+  .font-urdu, .font-nastaliq {
+    font-size: 2rem !important;
+    line-height: 3.5rem !important;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1280px) and (max-width: 1535px) {
+  #zauq-admin-panel {
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+  }
+  .font-urdu, .font-nastaliq {
+    font-size: 2.2rem !important;
+    line-height: 3.8rem !important;
+  }
+}
+
+/* Large Screens */
+@media (min-width: 1536px) {
+  #zauq-admin-panel {
+    max-width: 1440px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 3rem !important;
+    padding-right: 3rem !important;
+  }
+  .font-urdu, .font-nastaliq {
+    font-size: 2.4rem !important;
+    line-height: 4.2rem !important;
+  }
+}
+
+

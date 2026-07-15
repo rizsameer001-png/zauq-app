@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText, ShieldAlert } from "lucide-react";
+import { BookOpen, Sword, MessageSquare, Feather, Compass, Palette, Music, Heart, Sparkles, AlertCircle, CloudLightning, Settings, Tv, Shuffle, Library, Menu, X, ChevronDown, RefreshCw, Search, FileText, ShieldAlert, Cpu } from "lucide-react";
 import DeewanView from "./components/DeewanView";
 import { makeUrlRelative } from "./utils/url";
 import BeitBaziView from "./components/BeitBaziView";
@@ -12,8 +12,10 @@ import AudioControl from "./components/AudioControl";
 import AdminPanel from "./components/AdminPanel";
 import VideosView from "./components/VideosView";
 import LibraryView from "./components/LibraryView";
+import ApiPortal from "./components/ApiPortal";
 import DailySherModal from "./components/DailySherModal";
 import RandomSherModal from "./components/RandomSherModal";
+import AuthModal from "./components/AuthModal";
 import { Sher, Ghazal, ZauqVideo, Author, Book } from "./types";
 import { STARTER_SHERS, CLASSIC_POETS, CURATED_GHAZALS, STARTER_VIDEOS, STARTER_AUTHORS, STARTER_BOOKS, DICTIONARY_WORDS } from "./data";
 import { motion, AnimatePresence } from "motion/react";
@@ -65,7 +67,7 @@ const ZauqLogo = ({ className = "w-8.5 h-8.5" }: { className?: string }) => (
   </svg>
 );
 
-type TabID = "deewan" | "beitbazi" | "ustaad" | "dictionary" | "card" | "sitar" | "diary" | "videos" | "admin" | "authors";
+type TabID = "deewan" | "beitbazi" | "ustaad" | "dictionary" | "card" | "sitar" | "diary" | "videos" | "admin" | "authors" | "api";
 
 const THEMES = [
   { id: "midnight", name: "Midnight", color: "#0c0a09" },
@@ -82,6 +84,14 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+
+  // Reset focus mode when leaving the deewan tab
+  useEffect(() => {
+    if (activeTab !== "deewan") {
+      setIsFocusMode(false);
+    }
+  }, [activeTab]);
 
   // Security & Ban States
   const [appUserLoginAllowed, setAppUserLoginAllowed] = useState<boolean>(true);
@@ -272,6 +282,7 @@ For any inquiries regarding your data or to request account deletion, please con
   // Auth states
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Check if current user is banned or user logins are disabled
   useEffect(() => {
@@ -899,21 +910,8 @@ For any inquiries regarding your data or to request account deletion, please con
     triggerToast("Poetry loaded into Card Designer! 🎨");
   };
 
-  const handleSignIn = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      triggerToast("Successfully connected via Google! Welcome to Zauq. ✨");
-      if (result.user) {
-        logUserActivity("login", "User authenticated successfully via Google", {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: result.user.displayName
-        });
-      }
-    } catch (error) {
-      console.error("Sign in error:", error);
-      triggerToast("Authentication failed. Please try again.");
-    }
+  const handleSignIn = () => {
+    setIsAuthModalOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -989,7 +987,7 @@ For any inquiries regarding your data or to request account deletion, please con
       <AudioControl />
 
       {/* Sticky Universal Navigation Header Bar & Menu */}
-      <header className="sticky top-0 z-40 w-full bg-stone-950/80 backdrop-blur-md border-b border-stone-900/60 shadow-lg px-4 md:px-8 py-3.5 flex items-center justify-between transition-all">
+      <header className={`sticky top-0 z-40 w-full bg-stone-950/80 backdrop-blur-md border-b border-stone-900/60 shadow-lg px-4 md:px-8 py-3.5 flex items-center justify-between transition-all ${isFocusMode ? "hidden" : ""}`}>
         {/* Logo and Branding */}
         <div 
           onClick={() => {
@@ -1160,7 +1158,7 @@ For any inquiries regarding your data or to request account deletion, please con
             <button
               onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer group ${
-                ["dictionary", "card", "sitar", "videos", "admin"].includes(activeTab)
+                ["dictionary", "card", "sitar", "videos", "admin", "api"].includes(activeTab)
                   ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
                   : isMoreDropdownOpen
                     ? "bg-stone-900 border-stone-800 text-stone-200"
@@ -1189,7 +1187,8 @@ For any inquiries regarding your data or to request account deletion, please con
                       { id: "card", label: "Card Designer", icon: Palette, sub: "Quote Customizer" },
                       { id: "sitar", label: "Interactive Sitar", icon: Music, sub: "Sound Room" },
                       { id: "videos", label: "Sama'a Lounge", icon: Tv, sub: "Classical Sama" },
-                      { id: "admin", label: "Admin Panel", icon: Settings, sub: "Content Manager" }
+                      { id: "admin", label: "Admin Panel", icon: Settings, sub: "Content Manager" },
+                      { id: "api", label: "Mobile API Portal", icon: Cpu, sub: "Flutter Gateway" }
                     ].map((item) => {
                       const Icon = item.icon;
                       const isActive = activeTab === item.id;
@@ -1453,7 +1452,8 @@ For any inquiries regarding your data or to request account deletion, please con
                   { id: "card", label: "Card Designer", icon: Palette, sub: "Quote Customizer" },
                   { id: "sitar", label: "Interactive Sitar", icon: Music, sub: "Sound Room" },
                   { id: "videos", label: "Sama'a Lounge", icon: Tv, sub: "Classical Sama" },
-                  { id: "admin", label: "Admin Panel", icon: Settings, sub: "Content Manager" }
+                  { id: "admin", label: "Admin Panel", icon: Settings, sub: "Content Manager" },
+                  { id: "api", label: "Mobile API Portal", icon: Cpu, sub: "Flutter Gateway" }
                 ].map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -1505,7 +1505,7 @@ For any inquiries regarding your data or to request account deletion, please con
       <div className="max-w-7xl mx-auto px-4 md:px-6 pt-6 flex flex-col gap-8">
         
         {/* Calligraphic Royal Welcome Hero (Shown only on Home Anthology view for a beautiful royal introduction) */}
-        {activeTab === "deewan" && (
+        {activeTab === "deewan" && !isFocusMode && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1544,7 +1544,7 @@ For any inquiries regarding your data or to request account deletion, please con
               <div className="h-px w-36 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent my-6" />
 
               <p className="text-sm md:text-base lg:text-lg text-stone-400 leading-relaxed font-serif max-w-2xl italic mb-8">
-                {globalBannerTagline || "The elegance of tradition, reimagined with modern thought.The magic of words, powered by AI.Zauq- adab, redefined."}
+                {globalBannerTagline || "Welcome to your courtly sanctuary. Dive into our live curated anthology of classical masters, test your literary wit in real-time AI verse battles, craft designed quote cards, or meditate to the gentle background drone of the Tanpura."}
               </p>
 
               {globalBannerLink && globalBannerLink !== "deewan" && (
@@ -1607,6 +1607,8 @@ For any inquiries regarding your data or to request account deletion, please con
                   initialGhazal={focusedSearchGhazal}
                   onClearInitialPoet={() => setFocusedSearchPoet(null)}
                   onClearInitialGhazal={() => setFocusedSearchGhazal(null)}
+                  isFocusMode={isFocusMode}
+                  onToggleFocusMode={setIsFocusMode}
                 />
               )}
 
@@ -1656,6 +1658,8 @@ For any inquiries regarding your data or to request account deletion, please con
                   onEditInCardCreator={handleEditInCardCreator}
                   user={user}
                   onSignIn={handleSignIn}
+                  dailyCouplets={dailyCouplets}
+                  onSaveSher={handleSaveSher}
                 />
               )}
 
@@ -1690,12 +1694,16 @@ For any inquiries regarding your data or to request account deletion, please con
                   triggerToast={triggerToast}
                 />
               )}
+
+              {activeTab === "api" && (
+                <ApiPortal />
+              )}
             </motion.div>
           </AnimatePresence>
         </main>
 
         {/* Multi-column Royal Footer */}
-        <footer className="mt-16 py-12 border-t border-stone-900 text-stone-500 select-none">
+        <footer className={`mt-16 py-12 border-t border-stone-900 text-stone-500 select-none ${isFocusMode ? "hidden" : ""}`}>
           <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 px-4 text-xs">
             {/* Column 1: App Info */}
             <div className="flex flex-col gap-3">
@@ -1833,6 +1841,13 @@ For any inquiries regarding your data or to request account deletion, please con
           savedSherIds={savedShers.map((s) => s.id)}
           onRemoveSher={handleRemoveSher}
           onEditInCardCreator={handleEditInCardCreator}
+        />
+
+        {/* Auth Interface: User Sign In, Registration and Admin Credentials */}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          triggerToast={triggerToast}
         />
 
         {/* Dynamic CMS Page Overlay Modal */}
